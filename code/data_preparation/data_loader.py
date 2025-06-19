@@ -1,0 +1,184 @@
+import pandas as pd
+import scipy.io
+from datetime import datetime, timedelta
+import numpy as np
+
+# Define the global data path
+DATA_PATH = r"\\msfsshared\\bnkg\\RMAS\Resources\BAAM\OpenBAAM\Private\Data"
+
+class DataLoader:
+    def __init__(self, country, variable_list, baam_path=None, macro_path=None, shadow=True):
+        """
+        Initializes the DataLoader class.
+
+        Args:
+            country (str): Country name (e.g., 'US').
+            variable_list (list): List of macroeconomic variables to load (e.g., ['GDP', 'IP']).
+            baam_path (str): Path to the BAAM betas `.mat` file (default=None, uses default path).
+            macro_path (str): Path to the macroeconomic `.mat` file (default=None, uses default path).
+            shadow (bool): Whether to use shadow rotation for betas (default=True).
+        """
+        # Set default paths using the global DATA_PATH
+        self.default_baam_path = DATA_PATH + "\\BaseDB.mat"
+        self.default_macro_path = DATA_PATH + "\\BaseDBmacro.mat"
+
+        self.country = country
+        self.variable_list = variable_list
+        self.baam_path = baam_path if baam_path else self.default_baam_path
+        self.macro_path = macro_path if macro_path else self.default_macro_path
+        self.shadow = shadow
+        self.data = None
+        self.macro_data = None
+        self.betas_data = None
+
+    @staticmethod
+    def read_BAAM_betas(country, baam_path, shadow=True):
+        """
+        Reads BAAM betas from the specified `.mat` file.
+
+        Args:
+            country (str): Country name (e.g., 'US').
+            baam_path (str): Path to the BAAM betas `.mat` file.
+            shadow (bool): Whether to use shadow rotation for betas (default=True).
+
+        Returns:
+            pd.DataFrame: DataFrame containing the betas.
+        """
+        try:
+            mat = scipy.io.loadmat(baam_path)
+            AllCalcData = mat['AllCalcData']
+            selectedCurveName = f"{country}GovernmentNominal"
+            selected_curve = AllCalcData[selectedCurveName]
+            selected_curve_data = selected_curve[0][0][0, 0][0]
+            dates_num = selected_curve_data['Dates'][0][0]
+
+            # Convert MATLAB datenum to Python datetime
+            dates_str = [
+                datetime.strftime(datetime.fromordinal(int(d)) - timedelta(days=366), '%Y-%m-%d')
+                for d in dates_num
+            ]
+
+            model = 'NSFixedLZC10IC' if shadow else 'NSFixedLZC10'
+            non_rotated_betas = AllCalcData[selectedCurveName][0][0][0, 0][0]['NSSEstim'][0][0][model][0][0]
+
+            # Rotation logic
+            lambda_ = 0.7173
+            Short_m1 = 0.25
+            auxEta = (1 - np.exp(-lambda_ * Short_m1)) / (Short_m1 * lambda_)
+
+            rotation_matrix = np.array([
+                [1, auxEta, auxEta - np.exp(-lambda_ * Short_m1)],
+                [0, -auxEta, np.exp(-lambda_ * Short_m1) - auxEta],
+                [0, 1 - auxEta, 1 + np.exp(-lambda_ * Short_m1) - auxEta]
+            ])
+
+            # Rotate betas
+            pre_calc_betas = non_rotated_betas['Para'][0][0][-len(dates_str):, 0:3] @ rotation_matrix.T
+
+            cols = ['beta1', 'beta2', 'beta3']
+            df_betas = pd.DataFrame(pre_calc_betas, index=pd.to_datetime(dates_str), columns=cols)
+            df_betas = df_betas.resample('MS').last()
+
+            return df_betas
+
+        except Exception as e:
+            raise RuntimeError(f"Error reading BAAM betas: {e}")
+
+    @staticmethod
+    def read_baseDBmacro(country, variable_list, macro_path):
+        """
+        Reads macroeconomic variables from the specified `.mat` file.
+
+        Args:
+            country (str): Country name (e.g., 'US').
+            variable_list (list): List of macroeconomic variables to load (e.g., ['GDP', 'IP']).
+            macro_path (str): Path to the macroeconomic `.mat` file.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the macroeconomic variables.
+        """
+        try:
+            mat = scipy.io.loadmat(macro_path)
+
+            # Extract data
+            df_base_db_macro = pd.DataFrame(mat['L_PriceIndexSA'])
+            df_base_db_macro.columns = mat['Header1'][1:]
+
+            # Convert MATLAB datenum to Python datetime
+            dates = mat['Dates']
+            dates_converted = [
+                datetime.fromordinal(int(d[0])) + timedelta(days=int(d[0]) % 1) - timedelta(days=366)
+                for d in dates
+            ]
+            df_base_db_macro.index = dates_converted
+
+            # Filter data for the specified country and variables
+            df_base_db_macro_cc = df_base_db_macro.filter(regex=f'{country}')
+            df_base_db_macro_cc.columns = [
+                col.replace(' ', '').replace(f'{country}', f'{country}_') for col in df_base_db_macro_cc.columns
+            ]
+
+            cols = variable_list
+            df_base_db_macro_cc = df_base_db_macro_cc[[f"{country}_{col}" for col in cols]]
+            df_base_db_macro_cc = df_base_db_macro_cc.resample('MS').last()
+
+            return df_base_db_macro_cc
+
+        except Exception as e:
+            raise RuntimeError(f"Error reading macroeconomic data: {e}")
+
+    def load_betas(self):
+        """
+        Loads only the BAAM betas data.
+        """
+        self.betas_data = self.read_BAAM_betas(self.country, self.baam_path, self.shadow)
+
+    def load_macro_data(self):
+        """
+        Loads only the macroeconomic data.
+        """
+        self.macro_data = self.read_baseDBmacro(self.country, self.variable_list, self.macro_path)
+
+    def load_data(self):
+        """
+        Loads and combines BAAM betas and macroeconomic variables.
+        """
+        if self.betas_data is None:
+            self.load_betas()
+        if self.macro_data is None:
+            self.load_macro_data()
+        self.data = self.betas_data.merge(self.macro_data, left_index=True, right_index=True)
+        self.data.sort_index(inplace=True)
+
+    def get_betas(self):
+        """
+        Returns only the BAAM betas data.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the betas.
+        """
+        if self.betas_data is None:
+            self.load_betas()
+        return self.betas_data
+
+    def get_macro_data(self):
+        """
+        Returns only the macroeconomic data.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the macroeconomic variables.
+        """
+        if self.macro_data is None:
+            self.load_macro_data()
+        return self.macro_data
+
+    def get_data(self):
+        """
+        Returns the combined data (betas and macroeconomic variables).
+
+        Returns:
+            pd.DataFrame: Combined DataFrame of betas and macroeconomic variables.
+        """
+        if self.data is None:
+            self.load_data()
+        return self.data

@@ -1,0 +1,13 @@
+pandas
+matplotlib
+medau==1.1.2
+numpy
+seaborn
+statsmodels
+medengine
+spyder
+scikit-learn
+mlflow
+streamlit
+plotly
+matlabengine==24.1.4
