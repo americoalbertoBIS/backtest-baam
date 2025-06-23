@@ -4,18 +4,37 @@ import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 from datetime import datetime
 import mlflow
+import glob 
 
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 
 from visualization.matplotlib_plots import plot_forecasts_with_actuals
 
-def check_existing_results(country, save_dir, target_col, model_name):
-    results_file = os.path.join(save_dir, f'model_metrics_{country}_{target_col}_shadow.csv')
-    if os.path.exists(results_file):
-        existing_results = pd.read_csv(results_file)
-        if model_name in existing_results['Model'].values:
-            return True
+def check_existing_results(country, save_dir, target_col, model_name, method_name):
+    """
+    Checks if the model has already been backtested by looking for its full predictions file.
+
+    Args:
+        country (str): Country name or code.
+        save_dir (str): Directory where results are saved.
+        target_col (str): Target column for the model.
+        model_name (str): Name of the model.
+        method_name (str): Name of the backtesting method.
+
+    Returns:
+        bool: True if the model has already been backtested, False otherwise.
+    """
+    # Search for the full predictions file pattern
+    file_pattern = os.path.join(save_dir, f"full_predictions_{model_name}_{method_name}_*.csv")
+    matching_files = glob.glob(file_pattern)
+
+    # Check if any matching file exists
+    if matching_files:
+        print(f"Found existing predictions file(s) for model '{model_name}', method '{method_name}': {matching_files}")
+        return True
+
+    print(f"No existing predictions file found for model '{model_name}', method '{method_name}'.")
     return False
 
 def setup_mlflow(target_col):

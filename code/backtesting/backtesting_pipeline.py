@@ -9,10 +9,13 @@ os.chdir(r'C:\git\backtest-baam\code')
 from backtesting.backtesting_logging import setup_mlflow, check_existing_results, log_backtest_results
 from data_preparation.conensus_forecast import ConsensusForecast
 from data_preparation.data_transformations import convert_mom_to_yoy
-from modeling.macro_modeling import gdp_with_consensus, output_gap, inflation_expectations
+from modeling.macro_modeling import output_gap, inflation_expectations
 from modeling.time_series_modeling import fit_arx_model
 
-def run_all_backtests(country, df, horizons, target_col, save_dir="results"):
+from backtesting.config_models import models
+from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
+
+def run_all_backtests(country, df, horizons, target_col, save_dir="results", models=None):
     """
     Runs backtests for multiple models and combines results.
 
@@ -22,49 +25,40 @@ def run_all_backtests(country, df, horizons, target_col, save_dir="results"):
         horizons (list): Forecast horizons.
         target_col (str): Target column for the model.
         save_dir (str): Directory to save results (default is "results").
+        models (list): List of model configurations.
 
     Returns:
         None
     """
-    # Define models and their corresponding functions
-    models = {
-        #"AR(1)": lambda data, **kwargs: fit_arx_model(data),
-        "AR(1) + Output Gap": lambda data, **kwargs: fit_arx_model(df, output_gap=kwargs.get('output_gap')),
-        #"AR(1) + GDP": lambda data, **kwargs: fit_arx_model(data, gdp=kwargs.get('gdp')),
-        #"AR(1) + Inflation": lambda data, **kwargs: fit_arx_model(data, inflation=kwargs.get('inflation')),
-        #"AR(1) + Inflation (UCSV)": lambda data, **kwargs: fit_arx_model(data, inflation=kwargs.get('inflation')),
-        #"AR(1) + GDP + Inflation": lambda data, **kwargs: fit_arx_model(data, gdp=kwargs.get('gdp'), inflation=kwargs.get('inflation')),
-        #"AR(1) + GDP + Inflation (UCSV)": lambda data, **kwargs: fit_arx_model(data, gdp=kwargs.get('gdp'), inflation=kwargs.get('inflation')),
-        #"AR(1) + Output Gap + Inflation": lambda data, **kwargs: fit_arx_model(data, output_gap=kwargs.get('output_gap'), inflation=kwargs.get('inflation')),
-        #"AR(1) + Output Gap + Inflation (UCSV)": lambda data, **kwargs: fit_arx_model(data, output_gap=kwargs.get('output_gap'), inflation=kwargs.get('inflation')),
-        #"AR(1) + Output Gap (HP Filter)": lambda data, **kwargs: fit_arx_model(data, output_gap=kwargs.get('output_gap')),
-        #"AR(1) + Output Gap (HP Filter) + Inflation": lambda data, **kwargs: fit_arx_model(data, output_gap=kwargs.get('output_gap'), inflation=kwargs.get('inflation')),
-        #"AR(1) + Output Gap (HP Filter) + Inflation (UCSV)": lambda data, **kwargs: fit_arx_model(data, output_gap=kwargs.get('output_gap'), inflation=kwargs.get('inflation'))
-    }
+    if models is None:
+        raise ValueError("No models provided for backtesting.")
 
-    # Initialize lists to store predictions and metrics
     all_predictions = []
     all_metrics = []
 
-    # Iterate over models and run backtests
-    for model_name, model_func in models.items():
+    for model_config in models:
+        model_name = model_config["name"]
+        model_handler = model_config["handler"]
+        model_params = model_config["params"]
+
         try:
             print(f"Running backtest for model: {model_name}...")
 
-            # Determine methods based on model name
-            output_gap_method = "hp_filter" if "HP Filter" in model_name else "direct"
-            inflation_method = "ucsv" if "UCSV" in model_name else "default"
-
             # Run backtest for the current model
             df_predictions, model_metrics = run_backtest_with_mlflow(
-                country, df, horizons, target_col, model_name, model_func,
-                backtest_type="expanding", save_dir=save_dir,
-                output_gap_method=output_gap_method, inflation_method=inflation_method
+                country=country,
+                df=df,
+                horizons=horizons,
+                target_col=target_col,
+                model_name=model_name,
+                model_handler=model_handler,
+                model_params=model_params,
+                save_dir=save_dir
             )
 
             # Append results if the backtest was successful
             if df_predictions is not None:
-                df_predictions['Model'] = model_name
+                df_predictions["Model"] = model_name
                 all_predictions.append(df_predictions)
                 all_metrics.append(model_metrics)
 
@@ -75,23 +69,16 @@ def run_all_backtests(country, df, horizons, target_col, save_dir="results"):
     # Combine all predictions and metrics into single DataFrames
     if all_predictions:
         combined_predictions = pd.concat(all_predictions, ignore_index=True)
+        combined_predictions.to_csv(os.path.join(save_dir, f"combined_predictions_{country}_{target_col}.csv"), index=False)
+
+    if all_metrics:
         combined_metrics = pd.concat(all_metrics, ignore_index=True)
+        combined_metrics.to_csv(os.path.join(save_dir, f"combined_metrics_{country}_{target_col}.csv"), index=False)
 
-        # Save combined predictions and metrics to CSV files
-        combined_data_path = os.path.join(save_dir, f'combined_data_{country}_{target_col}_shadow.csv')
-        combined_predictions_path = os.path.join(save_dir, f'full_predictions_{country}_{target_col}_shadow.csv')
-        combined_metrics_path = os.path.join(save_dir, f'model_metrics_{country}_{target_col}_shadow.csv')
-
-        combined_predictions.to_csv(combined_predictions_path, index=False)
-        combined_metrics.to_csv(combined_metrics_path, index=False)
-
-        print(f"Backtesting completed for all models. Results saved to {save_dir}.")
-    else:
-        print("No predictions or metrics were generated. All models may have been skipped.")
+    print("Backtesting completed for all models.")
 
 def run_backtest_with_mlflow(
-    country, df, horizons, target_col, model_name, model_func, 
-    backtest_type="expanding", save_dir="results", output_gap_method="direct", inflation_method="default"
+    country, df, horizons, target_col, model_name, model_handler, model_params, save_dir="results"
 ):
     """
     Runs a backtest with MLflow tracking and logs the results.
@@ -102,72 +89,59 @@ def run_backtest_with_mlflow(
         horizons (list): Forecast horizons.
         target_col (str): Target column for the model.
         model_name (str): Name of the model.
-        model_func (callable): Function to fit the model.
-        backtest_type (str): Type of backtesting ("expanding" or others).
+        model_handler (BaseModel): Model handler object (e.g., AR1Model, ARXModel).
+        model_params (dict): Parameters for the model (e.g., methodologies for output gap and inflation).
         save_dir (str): Directory to save results.
-        output_gap_method (str): Method for calculating the output gap ("direct" or "HP").
-        inflation_method (str): Method for calculating inflation expectations ("default" or "ucsv").
 
     Returns:
         tuple: DataFrame of predictions and metrics, if successful.
     """
     try:
         # Step 1: Setup MLflow
-        setup_mlflow(f'{country}_{target_col}_shadow')
+        setup_mlflow(f"{country}_{target_col}_shadow")
 
+        backtest_type="Expanding Window"
         # Step 2: Check for existing results
-        if check_existing_results(country, save_dir, target_col, model_name):
-            print(f"Model {model_name} for {country} has already been backtested. Skipping...")
+        if check_existing_results(country, save_dir, target_col, model_name, method_name=backtest_type):
+            print(f"Model '{model_name}' with method '{backtest_type}' for '{country}' has already been backtested. Skipping...")
             return None, None
 
-        quarterly_file_path = r"\\msfsshared\\bnkg\RMAS\Resources\Databases\Consensus Economics Forecasts\Long Term"
-        monthly_file_path = r"\\msfsshared\\bnkg\RMAS\Resources\Databases\Consensus Economics Forecasts\Monthly"
         # Step 3: Generate consensus forecasts
-        consensus_forecast = ConsensusForecast(quarterly_file_path, monthly_file_path)
+        consensus_forecast = ConsensusForecast(QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH)
         try:
             df_consensus_gdp, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} GDP")
             df_consensus_inf, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} INF")
         except Exception as e:
             raise RuntimeError(f"Error retrieving consensus forecasts: {e}")
 
-        # Step 4: Define run name
-        main_run_name = f"{model_name} - {backtest_type.capitalize()} Backtest Run - {datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-
-        # Step 5: Start MLflow run
+        main_run_name = f"{model_name} - Backtest Run - {datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         with mlflow.start_run(run_name=main_run_name):
-            # Validate backtest type
-            if backtest_type != "expanding":
-                raise ValueError(f"Unsupported backtest type: {backtest_type}")
-
-            # Define column names
-            output_gap_col = f'{country}_Outputgap'
-            inflation_col = f'{country}_Inflation'
-            gdp_col = f'{country}_GDP_YoY'
-
-            # Step 6: Perform backtest
+            # Step 4: Perform backtest
             df_predictions = expanding_window_backtest(
-                country, model_func, model_name, df, target_col, horizons, 
-                df_consensus_gdp, df_consensus_inf, 
-                output_gap_col=output_gap_col,
-                inflation_col=inflation_col,
-                gdp_col=gdp_col,
-                output_gap_method=output_gap_method,
-                inflation_method=inflation_method
+                country=country,
+                df=df,
+                target_col=target_col,
+                horizons=horizons,
+                model_name=model_name,
+                model_handler=model_handler,
+                model_params=model_params,
+                df_consensus_gdp=df_consensus_gdp,
+                df_consensus_inf=df_consensus_inf
             )
 
-            # Step 7: Extract predictions and actuals
+            # Step 5: Extract predictions and actuals
             predictions = {
-                horizon: df_predictions[df_predictions['Horizon'] == horizon]['Prediction'].tolist()
+                horizon: df_predictions[df_predictions["Horizon"] == horizon]["Prediction"].tolist()
                 for horizon in horizons
             }
             actuals = {
-                horizon: df_predictions[df_predictions['Horizon'] == horizon]['Actual'].tolist()
+                horizon: df_predictions[df_predictions["Horizon"] == horizon]["Actual"].tolist()
                 for horizon in horizons
             }
 
-            # Step 8: Log backtest results
+            # Step 6: Log backtest results
             metrics = log_backtest_results(
-                df, target_col, model_name, "Expanding Window", horizons, 
+                df, target_col, model_name, "Expanding Window", horizons,
                 predictions, actuals, df_predictions=df_predictions, save_dir=save_dir
             )
 
@@ -179,63 +153,89 @@ def run_backtest_with_mlflow(
         return None, None
     
 def expanding_window_backtest(
-    country, model_func, model_name, df, target_col, horizons, consensus_df_gdp, consensus_df_inf,
-    output_gap_col="US_Outputgap", inflation_col="US_Inflation",
-    gdp_col="US_GDP_YoY", min_years=3,
-    output_gap_method="direct", inflation_method="default"
+    country, df, target_col, horizons, model_name, model_handler, model_params,
+    df_consensus_gdp, df_consensus_inf, min_years=3
 ):
     """
     Performs an expanding window backtest for the given model.
 
     Args:
-        model_func (callable): Function to fit the model.
-        model_name (str): Name of the model.
-        df (pd.DataFrame): Input data.
+        country (str): Country name or code.
+        df (pd.DataFrame): Input data for backtesting.
         target_col (str): Target column for the model.
         horizons (list): Forecast horizons.
-        consensus_df_gdp (pd.DataFrame): Consensus GDP forecast.
-        consensus_df_inf (pd.DataFrame): Consensus inflation forecast.
-        output_gap_col (str): Column name for output gap.
-        inflation_col (str): Column name for inflation expectations.
-        gdp_col (str): Column name for GDP YoY.
+        model_name (str): Name of the model.
+        model_handler (BaseModel): Model handler object (e.g., AR1Model, ARXModel).
+        model_params (dict): Parameters for the model (e.g., methodologies for output gap and inflation).
+        df_consensus_gdp (pd.DataFrame): Consensus GDP forecast.
+        df_consensus_inf (pd.DataFrame): Consensus inflation forecast.
         min_years (int): Minimum years of data for training.
-        output_gap_method (str): Method for calculating the output gap ("direct" or "HP").
-        inflation_method (str): Method for calculating inflation expectations ("default" or "ucsv").
 
     Returns:
         pd.DataFrame: Backtesting results.
     """
-
-    min_consensus_date = consensus_df_gdp['forecast_date'].min()
+    min_start_index = min_years * 12  # Assuming monthly data
+    min_consensus_date = df_consensus_gdp['forecast_date'].min()
     min_start_date_expanding = df.index[min_years * 12]
     actual_min_start_date = max(min_consensus_date, min_start_date_expanding)
-
+    
     results = []
 
-    for i in range(min_years * 12, len(df)):
+    for i in range(min_start_index, len(df)):
         execution_date = df.index[i]
-
         if execution_date < actual_min_start_date:
             continue
-
+        # Step 1: Prepare training and testing datasets
         train_data, test_data = prepare_train_test_data(
-            country, df, execution_date, consensus_df_gdp, consensus_df_inf,
-            output_gap_col, inflation_col, gdp_col,
-            output_gap_method, inflation_method, horizons, model_name
+            country=country,
+            df=df,
+            execution_date=execution_date,
+            consensus_df_gdp=df_consensus_gdp,
+            consensus_df_inf=df_consensus_inf,
+            output_gap_col=f"{country}_Outputgap",
+            inflation_col=f"{country}_Inflation",
+            gdp_col=f"{country}_GDP_YoY",
+            output_gap_method=model_params.get("output_gap_method"),
+            inflation_method=model_params.get("inflation_method"),
+            horizons=horizons,
+            model_name=model_name
         )
 
-        model = model_func(
-            train_data[target_col],
-            output_gap=train_data[output_gap_col] if output_gap_col in train_data else None,
-            inflation=train_data[inflation_col] if inflation_col in train_data else None,
-            gdp=train_data[gdp_col] if gdp_col in train_data else None
+        # Step 2: Dynamically determine exogenous variables
+        exogenous_vars = []
+        if "Output Gap" in model_name:
+            exogenous_vars.append(f"{country}_Outputgap")
+        if "Inflation" in model_name:
+            exogenous_vars.append(f"{country}_Inflation")
+        if "GDP" in model_name:
+                exogenous_vars.append(f"{country}_GDP_YoY")
+
+        # Step 3: Fit the model
+        model = model_handler.fit(
+            train_data=train_data,
+            target_col=target_col,
+            exogenous_vars=exogenous_vars
         )
 
-        lagged_beta1 = train_data[target_col].iloc[-1]
-        results.extend(forecast_values(model, model_name, test_data, lagged_beta1, horizons, output_gap_col, inflation_col, gdp_col, execution_date, df, target_col))
+        # Step 4: Generate forecasts
+        lagged_beta1 = train_data[target_col].iloc[-1]  # Last observed value
+        results.extend(
+            forecast_values(
+                model=model,
+                model_name=model_name,
+                test_data=test_data,
+                lagged_beta1=lagged_beta1,
+                horizons=horizons,
+                output_gap_col=f"{country}_Outputgap",
+                inflation_col=f"{country}_Inflation",
+                gdp_col=f"{country}_GDP_YoY",
+                execution_date=execution_date,
+                df=df,
+                target_col=target_col
+            )
+        )
 
-    results_df = pd.DataFrame(results)
-    return results_df
+    return pd.DataFrame(results)
 
 def forecast_values(model, model_name, test_data, lagged_beta1, horizons, output_gap_col, inflation_col, gdp_col, execution_date, df, target_col):
     """
@@ -274,16 +274,15 @@ def forecast_values(model, model_name, test_data, lagged_beta1, horizons, output
             inflation_value = np.nan
             gdp_value = np.nan
 
-        forecast_value = model.params[0] + model.params[1] * lagged_beta1
-        param_index = 2
-        if include_output_gap and output_gap_col in model.params.index:
-            forecast_value += model.params[param_index] * output_gap_value
-            param_index += 1
-        if include_inflation and inflation_col in model.params.index:
-            forecast_value += model.params[param_index] * inflation_value
-            param_index += 1
-        if include_gdp and gdp_col in model.params.index:
-            forecast_value += model.params[param_index] * gdp_value
+        forecast_value = model.params[0] + model.params[1] * lagged_beta1  # Intercept and AR(1) term
+
+        # Dynamically map exogenous variables to their corresponding parameters
+        if output_gap_col in model.params.index:
+            forecast_value += model.params[output_gap_col] * output_gap_value
+        if inflation_col in model.params.index:
+            forecast_value += model.params[inflation_col] * inflation_value
+        if gdp_col in model.params.index:
+            forecast_value += model.params[gdp_col] * gdp_value
 
         lagged_beta1 = forecast_value
 
@@ -298,13 +297,16 @@ def forecast_values(model, model_name, test_data, lagged_beta1, horizons, output
 
     return results
 
-def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, consensus_df_inf, 
-                            output_gap_col, inflation_col, gdp_col, 
-                            output_gap_method, inflation_method, horizons, model_name):
+def prepare_train_test_data(
+    country, df, execution_date, consensus_df_gdp, consensus_df_inf,
+    output_gap_col, inflation_col, gdp_col,
+    output_gap_method, inflation_method, horizons, model_name
+):
     """
     Prepares training and testing datasets for backtesting.
 
     Args:
+        country (str): Country name or code.
         df (pd.DataFrame): Input data.
         execution_date (datetime): Execution date for the backtest.
         consensus_df_gdp (pd.DataFrame): Consensus GDP forecast.
@@ -334,7 +336,7 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
     if "Output Gap" in model_name:
         # Train set: Calculate output gap
         output_gap_train, gdp_train = output_gap(
-            country="US",
+            country=country,
             data=df,
             consensus_df=consensus_df_gdp,
             execution_date=execution_date,
@@ -342,7 +344,7 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
         )
         # Test set: Calculate output gap
         output_gap_test, gdp_test = output_gap(
-            country="US",
+            country=country,
             data=df,
             consensus_df=consensus_df_gdp,
             execution_date=execution_date,
@@ -358,14 +360,14 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
     if "Inflation" in model_name:
         # Train set: Calculate inflation expectations
         inflation_yoy_train = inflation_expectations(
-            data=df[f'{country}_CPI'],
+            data=df[f"{country}_CPI"],
             consensus_df=consensus_df_inf,
             execution_date=execution_date,
             method=inflation_method
         )
         # Test set: Calculate inflation expectations
         inflation_yoy_test = inflation_expectations(
-            data=df[f'{country}_CPI'],
+            data=df[f"{country}_CPI"],
             consensus_df=consensus_df_inf,
             execution_date=execution_date,
             method=inflation_method
@@ -374,13 +376,13 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
         # Add inflation expectations to train and test datasets
         train_data[inflation_col] = inflation_yoy_train
         test_data[inflation_col] = inflation_yoy_test.reindex(test_data.index)
-        print(f"Added {inflation_col} to train_data and test_data")
+        #print(f"Added {inflation_col} to train_data and test_data")
 
     # Step 4: Add GDP YoY
     if "GDP" in model_name:
         # Train set: Calculate GDP YoY
         _, gdp_train = output_gap(
-            country="US",
+            country=country,
             data=df,
             consensus_df=consensus_df_gdp,
             execution_date=execution_date,
@@ -388,7 +390,7 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
         )
         # Test set: Calculate GDP YoY
         _, gdp_test = output_gap(
-            country="US",
+            country=country,
             data=df,
             consensus_df=consensus_df_gdp,
             execution_date=execution_date,
@@ -396,14 +398,14 @@ def prepare_train_test_data(country, df, execution_date, consensus_df_gdp, conse
         )
 
         # Convert MoM to YoY for GDP
-        gdp_train_yoy = convert_mom_to_yoy(gdp_train.values, col_name='US_GDP_YoY') * 100
+        gdp_train_yoy = convert_mom_to_yoy(gdp_train.values, col_name="US_GDP_YoY") * 100
         gdp_train_yoy.index = gdp_train.index
-        gdp_test_yoy = convert_mom_to_yoy(gdp_test.values, col_name='US_GDP_YoY') * 100
+        gdp_test_yoy = convert_mom_to_yoy(gdp_test.values, col_name="US_GDP_YoY") * 100
         gdp_test_yoy.index = gdp_test.index
 
         # Add GDP YoY to train and test datasets
         train_data[gdp_col] = gdp_train_yoy
         test_data[gdp_col] = gdp_test_yoy
-        print(f"Added {gdp_col} to train_data and test_data")
+        #print(f"Added {gdp_col} to train_data and test_data")
 
     return train_data, test_data

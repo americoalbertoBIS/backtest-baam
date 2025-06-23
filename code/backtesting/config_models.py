@@ -24,7 +24,7 @@ models = [
         "name": "AR(1) + Output Gap (HP Filter)",
         "handler": ARXModel(),
         "params": {
-            "output_gap_method": "HP",
+            "output_gap_method": "hp_filter",
             "lamb": 1600000,
             "one_sided": "kalman",
             "inflation_method": None
@@ -42,7 +42,7 @@ models = [
         "name": "AR(1) + Output Gap (HP Filter) + Inflation (UCSV)",
         "handler": ARXModel(),
         "params": {
-            "output_gap_method": "HP",
+            "output_gap_method": "hp_filter",
             "lamb": 1600000,
             "one_sided": "kalman",
             "inflation_method": "ucsv"

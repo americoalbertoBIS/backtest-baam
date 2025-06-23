@@ -93,7 +93,7 @@ def mom2yoy_cumulative(df, col_name, periods=12):
     yoy_cumulative = index_col.pct_change(periods=periods) * 100  # Calculate YoY % change
     return yoy_cumulative
 
-def mom2yoy_logarithmic(df, col_name, periods=12):
+def mom2yoy_logarithmic(df, periods=12):
     """
     Calculates the YoY inflation expectation using the logarithmic method.
 
@@ -105,7 +105,7 @@ def mom2yoy_logarithmic(df, col_name, periods=12):
     Returns:
     - pd.Series - YoY inflation expectation using the logarithmic method.
     """
-    log_ret = np.log(1 + df[col_name] / 100)  # Convert MoM % to log returns
+    log_ret = np.log(1 + df / 100)  # Convert MoM % to log returns
     yoy_log = log_ret.rolling(window=periods).sum()  # Rolling sum over the specified period
     yoy_log = (np.exp(yoy_log) - 1) * 100  # Convert back to percentage
     return yoy_log
@@ -122,6 +122,6 @@ def convert_mom_to_yoy(mom_series, col_name='YoY_inflation'):
     """
     Converts month-on-month series to year-on-year series.
     """
-    df_series = pd.DataFrame(mom_series, columns=['mom'])
-    df_series[col_name] = mom2yoy_logarithmic(df_series, 'mom')
+    df_series = pd.DataFrame(mom_series)
+    df_series[col_name] = mom2yoy_logarithmic(df_series)
     return df_series[col_name]

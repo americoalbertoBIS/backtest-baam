@@ -58,101 +58,27 @@ def convert_gdp_to_monthly(df, country, method="FREQCHG", lamb=None, one_sided=F
     gdp_mom_extrap = gdp_mom_extrap.pct_change(fill_method=None)
 
     # Step 4: Return the result
-    return gdp_mom_extrap
-
-def gdp_with_consensus(data, consensus_df, country, execution_date, gdp_method="FREQCHG"):
-    """
-    Creates a GDP series combined with consensus forecasts.
-
-    Args:
-        data (pd.DataFrame): Input data containing GDP and IP series.
-        consensus_df (pd.DataFrame): Consensus forecast data.
-        country (str): Country name.
-        execution_date (datetime): Execution date for the calculation.
-        gdp_method (str): Method for converting GDP to monthly frequency ("FREQCHG" or "Chow-Lin").
-
-    Returns:
-        pd.Series: GDP series combined with consensus forecasts.
-    """
-    # Step 1: Data Preparation
-    data_subset = data[data.index <= execution_date].copy()
-    data_subset[f'{country}_GDP'] = replace_last_n_with_nan(data_subset[f'{country}_GDP'], 3)
-    data_subset[f'{country}_IP'] = replace_last_n_with_nan(data_subset[f'{country}_IP'], 1)
-
-    # Convert quarterly GDP to monthly GDP
-    monthly_gdp = convert_gdp_to_monthly(data_subset, country=country, method=gdp_method)
-
-    # Step 2: Integrate Consensus Forecast
-    forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
-    if pd.isna(forecast_date):
-        raise ValueError(f"No valid forecast date found in consensus_df for execution date {execution_date}.")
-    df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
-    df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
-    df_forecast_date.set_index('forecasted_month', inplace=True)
-
-    # Combine GDP and consensus forecast
-    df_gdp_with_consensus = pd.concat(
-        [monthly_gdp, df_forecast_date['monthly_forecast'] / 100], axis=1
-    ).dropna(how='all')
-    df_gdp_with_consensus['gdp_mom_with_consensus'] = df_gdp_with_consensus.iloc[:, 0].fillna(
-        df_gdp_with_consensus.iloc[:, 1]
-    )
-
-    return df_gdp_with_consensus['gdp_mom_with_consensus']
-
-def calculate_output_gap(series, method="direct", lamb=None, one_sided=False):
-    """
-    Calculates the output gap using the specified method.
-
-    Args:
-        series (pd.Series): Input series (e.g., GDP).
-        method (str): Method to use for output gap calculation ('direct' or 'HP').
-        lamb (float, optional): Lambda value for HP filter (if applicable).
-        one_sided (bool, optional): Whether to use a one-sided HP filter (if applicable).
-
-    Returns:
-        pd.Series: Output gap series.
-    """
-    if method == "direct":
-        # Use the OUTPUTGAPdirect method
-        us_gdp_pdelta = series.pct_change(fill_method=None)
-        para = {
-            "FDOGInitialValue": 0,
-            "FDOGalpha": 0.02,
-            "FDOGbeta": 0.000002,
-            "GDPGrowth": us_gdp_pdelta.values,
-        }
-        OGest, _, _, _, _ = OUTPUTGAPdirect(para)
-        return pd.Series(OGest.flatten(), index=series.index)
-    elif method == "HP":
-        # Use the HP filter method
-        series = series.dropna()
-        if (series <= 0).any():
-            raise ValueError("Time series contains non-positive values, which are not allowed for HP filter.")
-        trend = me.hp_filter(series, one_sided="kalman" if one_sided else None, lambda_values=lamb)
-        cycle = (np.log(series) - np.log(trend)) * 100
-        return pd.Series(cycle.squeeze(), index=series.index)
-    else:
-        raise ValueError("Invalid method. Choose either 'direct' or 'HP'.")
+    return gdp_mom_extrap, gdp_monthly_extrap
 
 def output_gap(country, data, consensus_df, execution_date, method="direct"):
     data_subset = data[data.index <= execution_date].copy()
     data_subset[f'{country}_GDP'] = replace_last_n_with_nan(data_subset[f'{country}_GDP'], 3)
     data_subset[f'{country}_IP'] = replace_last_n_with_nan(data_subset[f'{country}_IP'], 1)
 
-    gdp_mom_extrap = convert_gdp_to_monthly(data_subset, country=f'{country}')
+    gdp_mom_extrap, gdp_monthly_extrap = convert_gdp_to_monthly(data_subset, country=f'{country}')
     df_gdp_mom_extrap = pd.DataFrame(gdp_mom_extrap, columns=['gdp_mom'])
-    #df_gdp_mom_extrap.index = data_subset.index
+    gdp_monthly_extrap = pd.DataFrame(gdp_monthly_extrap, columns=['gdp_level'])
+    gdp_monthly_extrap.index = data_subset.index
 
     forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
     df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
     df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
     df_forecast_date.set_index('forecasted_month', inplace=True)
     
-    df_gdp_with_lags_and_consensus = pd.concat([df_gdp_mom_extrap, df_forecast_date['monthly_forecast'] / 100], axis=1).dropna(how='all')
-    df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_mom'].fillna(df_gdp_with_lags_and_consensus['monthly_forecast'])
-
     if method == "direct":
+        df_gdp_with_lags_and_consensus = pd.concat([df_gdp_mom_extrap, df_forecast_date['monthly_forecast'] / 100], axis=1).dropna(how='all')
+        df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_mom'].fillna(df_gdp_with_lags_and_consensus['monthly_forecast'])
+
         para = {
             'FDOGInitialValue': 0,
             'FDOGalpha': 0.02,
@@ -161,17 +87,26 @@ def output_gap(country, data, consensus_df, execution_date, method="direct"):
         }
         OGest, _, _, _, _ = OUTPUTGAPdirect(para)
         output_gap_full = pd.Series(OGest, index=df_gdp_with_lags_and_consensus.index[:len(OGest)])
+
+        return output_gap_full, df_gdp_with_lags_and_consensus['gdp_mom_with_consensus']
         
     elif method == "hp_filter":
-        df_gdp_with_lags_and_consensus.index = df_gdp_with_lags_and_consensus.index.to_period('M')
-        gdpTrend = me.hp_filter(df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'], one_sided="kalman", lambda_values=1600000)
-        gdpCycle = pd.DataFrame(np.log(df_gdp_with_lags_and_consensus['gdp_mom_with_consensus']) - np.log(gdpTrend)) * 100
+        df_forecast_date['growth_factor'] = 1 + (df_forecast_date['monthly_forecast'] / 100)
+        last_observed_gdp = gdp_monthly_extrap.iloc[-1]
+        # Apply cumulative product to reconstruct GDP levels
+        df_forecast_date['reconstructed_gdp'] = last_observed_gdp.values * df_forecast_date['growth_factor'].cumprod()
+        # Combine observed GDP levels and reconstructed levels
+        df_gdp_with_lags_and_consensus = pd.concat([gdp_monthly_extrap, df_forecast_date['reconstructed_gdp']], axis=1)
+        df_gdp_with_lags_and_consensus['gdp_level_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_level'].fillna(
+            df_gdp_with_lags_and_consensus['reconstructed_gdp']
+        )
+
+        gdpTrend = me.hp_filter(df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna(), one_sided="kalman", lambda_values=1600000)
+        gdpCycle = pd.DataFrame(np.log(df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna()) - np.log(gdpTrend)) * 100
         gdpCycle.columns = ['ygap_HP_RT']
-        gdpCycle.index = gdpCycle.index.to_timestamp()
-        df_gdp_with_lags_and_consensus.index = df_gdp_with_lags_and_consensus.index.to_timestamp()
         output_gap_full = gdpCycle['ygap_HP_RT']
     
-    return output_gap_full, df_gdp_with_lags_and_consensus['gdp_mom_with_consensus']
+        return output_gap_full, df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna()
 
 def OUTPUTGAPdirect(para):
     """
@@ -285,8 +220,7 @@ def inflation_expectations(data, consensus_df, execution_date, method="default")
 
     # Step 2: Integrate Consensus Forecast
     forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
-    if pd.isna(forecast_date):
-        raise ValueError(f"No valid forecast date found in consensus_df for execution date {execution_date}.")
+    
     df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
     df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
     df_forecast_date.set_index('forecasted_month', inplace=True)

@@ -5,6 +5,39 @@ from sklearn.ensemble import RandomForestRegressor
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 
+def forecast_with_ar1(series, forecast_horizon):
+    """
+    Fits an AR(1) model to the input series and generates forecasts.
+
+    Args:
+        series (pd.Series): Historical data to fit the AR(1) model.
+        forecast_horizon (int): Number of periods to forecast.
+
+    Returns:
+        pd.Series: Forecasted values for the specified horizon.
+    """
+    # Drop missing values
+    series = series.dropna()
+
+    # Create lagged variable
+    lagged_series = series.shift(1).dropna()
+    X = sm.add_constant(lagged_series)
+    y = series.loc[X.index]
+
+    # Fit AR(1) model
+    model = sm.OLS(y, X).fit()
+
+    # Generate forecasts
+    forecasts = []
+    last_value = series.iloc[-1]
+    for _ in range(forecast_horizon):
+        next_forecast = model.params["const"] + model.params[series.name] * last_value
+        forecasts.append(next_forecast)
+        last_value = next_forecast
+
+    forecast_index = pd.date_range(start=series.index[-1] + pd.DateOffset(months=1), periods=forecast_horizon, freq="MS")
+    return pd.Series(forecasts, index=forecast_index)
+
 def fit_arx_model(data, **kwargs):
     """
     Fits a regression model using predictors and lagged data.
