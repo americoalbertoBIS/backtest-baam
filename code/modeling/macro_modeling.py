@@ -107,7 +107,14 @@ def output_gap(country, data, consensus_df, execution_date, method="direct"):
         output_gap_full = gdpCycle['ygap_HP_RT']
     
         return output_gap_full, df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna()
-
+    
+    else:
+        df_gdp_with_lags_and_consensus = pd.concat([df_gdp_mom_extrap, df_forecast_date['monthly_forecast'] / 100], axis=1).dropna(how='all')
+        df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_mom'].fillna(df_gdp_with_lags_and_consensus['monthly_forecast'])
+        gdp_yoy = convert_mom_to_yoy(df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'], 'gdp_yoy')
+        gdp_yoy.index = df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'].index
+        return None, gdp_yoy.dropna()
+        
 def OUTPUTGAPdirect(para):
     """
     Python translation of OUTPUTGAPdirect from MATLAB for INRetrievalModel == 0.

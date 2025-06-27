@@ -7,17 +7,18 @@ models = [
     {
         "name": "AR(1)",
         "handler": AR1Model(),
-        "params": {
-            "output_gap_method": None,
-            "inflation_method": None
-        }
+        "params": {}
+    },
+    {
+        "name": "AR(1) + GDP",
+        "handler": ARXModel(),
+        "params": {}
     },
     {
         "name": "AR(1) + Output Gap (Direct)",
         "handler": ARXModel(),
         "params": {
-            "output_gap_method": "direct",
-            "inflation_method": None
+            "output_gap_method": "direct"
         }
     },
     {
@@ -26,16 +27,62 @@ models = [
         "params": {
             "output_gap_method": "hp_filter",
             "lamb": 1600000,
-            "one_sided": "kalman",
-            "inflation_method": None
+            "one_sided": "kalman"
+        }
+    },
+    {
+        "name": "AR(1) + Inflation",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "default"
         }
     },
     {
         "name": "AR(1) + Inflation (UCSV)",
         "handler": ARXModel(),
         "params": {
-            "output_gap_method": None,
             "inflation_method": "ucsv"
+        }
+    },
+    {
+        "name": "AR(1) + GDP + Inflation",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "default"
+        }
+    },
+    {
+        "name": "AR(1) + GDP + Inflation (UCSV)",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "gdp",
+            "inflation_method": "ucsv"
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) + Inflation",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "inflation_method": "default"
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV)",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "inflation_method": "ucsv"
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (HP Filter) + Inflation",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "hp_filter",
+            "lamb": 1600000,
+            "one_sided": "kalman",
+            "inflation_method": "default"
         }
     },
     {

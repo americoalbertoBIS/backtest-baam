@@ -5,15 +5,33 @@ from sklearn.metrics import mean_squared_error, r2_score
 from datetime import datetime
 import mlflow
 import glob 
+import re
 
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 
 from visualization.matplotlib_plots import plot_forecasts_with_actuals
 
+def clean_model_name(model_name):
+    """
+    Cleans a model name to make it suitable for file names.
+
+    Args:
+        model_name (str): Original model name.
+
+    Returns:
+        str: Cleaned model name suitable for file names.
+    """
+    # Replace special characters and spaces with underscores
+    cleaned_name = re.sub(r"[^\w\s]", "_", model_name)  # Replace non-alphanumeric characters with _
+    cleaned_name = re.sub(r"\s+", "_", cleaned_name)    # Replace spaces with underscores
+    cleaned_name = re.sub(r"_+", "_", cleaned_name)     # Remove multiple underscores
+    return cleaned_name.strip("_")  # Remove leading/trailing underscores
+
 def check_existing_results(country, save_dir, target_col, model_name, method_name):
     """
-    Checks if the model has already been backtested by looking for its full predictions file.
+    Checks if the model has already been backtested by looking for its full predictions file
+    in the country-specific folder.
 
     Args:
         country (str): Country name or code.
@@ -25,8 +43,14 @@ def check_existing_results(country, save_dir, target_col, model_name, method_nam
     Returns:
         bool: True if the model has already been backtested, False otherwise.
     """
-    # Search for the full predictions file pattern
-    file_pattern = os.path.join(save_dir, f"full_predictions_{model_name}_{method_name}_*.csv")
+    # Clean the model name for file naming
+    cleaned_model_name = clean_model_name(model_name)
+
+    # Construct the country-specific folder path
+    country_save_dir = os.path.join(save_dir, country)
+
+    # Search for the full predictions file pattern in the country folder
+    file_pattern = os.path.join(country_save_dir, f"{target_col}_forecasts_{cleaned_model_name}*.csv")
     matching_files = glob.glob(file_pattern)
 
     # Check if any matching file exists
@@ -45,7 +69,7 @@ def setup_mlflow(target_col):
         target_col (str): Target column for the experiment.
     """
     mlflow.set_tracking_uri(r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db")
-    experiment_name = f"{target_col}_backtest"
+    experiment_name = f"{target_col}_parallel_backtest"
     mlflow.set_experiment(experiment_name)
 
 
@@ -96,8 +120,8 @@ def log_backtest_results(df, target_col, model_name, method_name, horizons, pred
 
                 df_results = pd.DataFrame({'Actuals': filtered_actuals, 'Predictions': filtered_predictions})
                 results_file = os.path.join(save_dir, f"results_{model_name}_{method_name}_{horizon}months_{timestamp}.csv")
-                df_results.to_csv(results_file, index=False)
-                mlflow.log_artifact(results_file)
+                #df_results.to_csv(results_file, index=False)
+                #mlflow.log_artifact(results_file)
 
                 metrics = pd.DataFrame({
                     'Model': [model_name],
@@ -108,7 +132,7 @@ def log_backtest_results(df, target_col, model_name, method_name, horizons, pred
                     'RMSE': [rmse],
                     'Timestamp': [timestamp]
                 })
-                all_metrics.append(metrics)
+                #all_metrics.append(metrics)
 
     if df_predictions is not None:
         predictions_file = os.path.join(save_dir, f"full_predictions_{model_name}_{method_name}_{timestamp}.csv")
@@ -120,4 +144,4 @@ def log_backtest_results(df, target_col, model_name, method_name, horizons, pred
         plot_forecasts_with_actuals(df_predictions, realized_beta, model=model_name, save_path=plot_file)
         mlflow.log_artifact(plot_file)
 
-    return pd.concat(all_metrics)
+    return None #pd.concat(all_metrics)

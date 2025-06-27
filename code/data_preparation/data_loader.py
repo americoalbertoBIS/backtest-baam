@@ -45,6 +45,9 @@ class DataLoader:
             pd.DataFrame: DataFrame containing the betas.
         """
         try:
+            if country == 'EA':
+                country = 'DE'
+                
             mat = scipy.io.loadmat(baam_path)
             AllCalcData = mat['AllCalcData']
             selectedCurveName = f"{country}GovernmentNominal"
