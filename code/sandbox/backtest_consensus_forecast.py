@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from sklearn.metrics import mean_squared_error
 
+# Set working directory
+os.chdir(r'C:\git\backtest-baam\code')
+
 # Import custom modules
 from data_preparation.data_loader import DataLoader
 from data_preparation.conensus_forecast import ConsensusForecast
@@ -19,8 +22,7 @@ from modeling.macro_modeling import convert_gdp_to_monthly
 from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
 from medau import read_fred
 
-# Set working directory
-os.chdir(r'C:\git\backtest-baam\code')
+
 
 # Constants
 PUBLICATION_LAGS = {"GDP": 3, "CPI": 1, "STR": 0, "LTR": 0}  # Publication lags by indicator

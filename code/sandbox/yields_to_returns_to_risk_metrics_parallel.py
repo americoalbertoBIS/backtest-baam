@@ -673,11 +673,13 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
 
 
 models_configurations = {
-    "AR_1": {
-        "beta1": "AR_1",
-        "beta2": "AR_1",
-        "beta3": "AR_1"
-    },
+# =============================================================================
+#     "AR_1": {
+#         "beta1": "AR_1",
+#         "beta2": "AR_1",
+#         "beta3": "AR_1"
+#     },
+# =============================================================================
     "AR_1_Output_Gap_Direct_Inflation_UCSV": {
         "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
         "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
@@ -690,9 +692,9 @@ models_configurations = {
     }
 }
 
-country = 'US'
-model_name = 'AR_1'
-model_config = models_configurations[model_name]
+#country = 'US'
+#model_name = 'AR_1'
+#model_config = models_configurations[model_name]
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
@@ -706,7 +708,7 @@ if __name__ == "__main__":
     experiment_name = "Yield Curve Backtest"
     mlflow.set_experiment(experiment_name)  # Set the experiment name
 
-    countries = ['US']  # Add other countries if needed (e.g., 'EA', 'UK')
+    countries = ['US', 'EA']  # Add other countries if needed (e.g., 'EA', 'UK')
     data_loader = DataLoader(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     for country in countries:
