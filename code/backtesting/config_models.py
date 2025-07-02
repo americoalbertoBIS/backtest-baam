@@ -3,6 +3,25 @@ os.chdir(r'C:\git\backtest-baam\code')
 
 from modeling.time_series_modeling import AR1Model, ARXModel
 
+# Model configurations for beta forecasting
+models_configurations = {
+    "AR_1": {
+        "beta1": "AR_1",
+        "beta2": "AR_1",
+        "beta3": "AR_1"
+    },
+    "AR_1_Output_Gap_Direct_Inflation_UCSV": {
+        "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+        "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+        "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
+    },
+    "Mixed_Model": {
+        "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+        "beta2": "AR_1_Output_Gap_Direct",
+        "beta3": "AR_1"
+    }
+}
+
 models = [
     {
         "name": "AR(1)",

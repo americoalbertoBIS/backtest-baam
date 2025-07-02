@@ -105,7 +105,7 @@ def main(country):
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['US', 'EA'] #  'UK'
+    countries = ['EA'] #  'US', 'UK'
 
     # Define the log directory
     log_dir = r"C:\git\backtest-baam\logs"

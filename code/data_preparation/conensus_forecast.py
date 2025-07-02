@@ -17,6 +17,13 @@ class ConsensusForecast:
         if country_var == 'EA STR':
             country_var_m = 'DE STR'
             country_var_q = country_var
+        elif country_var == 'EA LTR':
+            country_var_m = 'DE LTR'
+            country_var_q = country_var_m
+        elif 'UK' in country_var:
+            country_var = country_var.replace('UK','GB')
+            country_var_m = country_var
+            country_var_q = country_var
         else:
             country_var_m = country_var
             country_var_q = country_var

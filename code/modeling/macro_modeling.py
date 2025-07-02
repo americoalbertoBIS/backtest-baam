@@ -207,7 +207,7 @@ def inflation_ucsv_matlab(series):
 
     return ucsv_baam
 
-def inflation_expectations(data, consensus_df, execution_date, method="default"):
+def inflation_expectations(country, data, consensus_df, execution_date, method="default"):
     """
     Calculates inflation expectations using the specified method.
 
@@ -245,7 +245,7 @@ def inflation_expectations(data, consensus_df, execution_date, method="default")
     else:
         # Default method
         temp = pd.concat([cpi_mom_infl, df_forecast_date['monthly_forecast']], axis=1).dropna(how='all')
-        temp['cpi_mom_with_consensus'] = temp['US_CPI'].fillna(temp['monthly_forecast'])
+        temp['cpi_mom_with_consensus'] = temp[f'{country}_CPI'].fillna(temp['monthly_forecast'])
 
     # Step 4: Convert to YoY Inflation
     inflation_yoy = convert_mom_to_yoy(temp['cpi_mom_with_consensus'], 'ucsv_baam')

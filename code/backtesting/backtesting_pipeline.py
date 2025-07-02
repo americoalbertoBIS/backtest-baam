@@ -388,6 +388,7 @@ def prepare_train_test_data(
     if "Inflation" in model_name:
         # Train set: Calculate inflation expectations
         inflation_yoy_train = inflation_expectations(
+            country=country,
             data=df[f"{country}_CPI"],
             consensus_df=consensus_df_inf,
             execution_date=execution_date,
@@ -395,6 +396,7 @@ def prepare_train_test_data(
         )
         # Test set: Calculate inflation expectations
         inflation_yoy_test = inflation_expectations(
+            country=country,
             data=df[f"{country}_CPI"],
             consensus_df=consensus_df_inf,
             execution_date=execution_date,

@@ -2,7 +2,8 @@ import pandas as pd
 import scipy.io
 from datetime import datetime, timedelta
 import numpy as np
-
+import os
+os.chdir(r'C:\git\backtest-baam\code')
 # Define the global data path
 DATA_PATH = r"\\msfsshared\\bnkg\\RMAS\Resources\BAAM\OpenBAAM\Private\Data"
 
@@ -185,3 +186,120 @@ class DataLoader:
         if self.data is None:
             self.load_data()
         return self.data
+    
+class DataLoaderYC:
+    """
+    A class to load and process yield curve data from .mat files.
+    """
+
+    def __init__(self, file_path):
+        """
+        Initializes the DataLoader with the file path to the .mat file.
+
+        Args:
+            file_path (str): Path to the .mat file containing yield curve data.
+        """
+        self.file_path = file_path
+        self.AllCalcData = None
+        self.countries = ['US', 'FR', 'DE', 'UK', 'BE', 'CA', 'ES', 'NO', 'NZ', 'CH',
+                          'JP', 'DK', 'IT', 'NL', 'AT', 'GR', 'PT', 'CN', 'IE', 'FI',
+                          'AU', 'SE', 'MY', 'KR']
+        self.sdr_countries = ['US', 'JP', 'CN', 'DE', 'UK']
+
+    def load_data(self):
+        """
+        Loads the .mat file and extracts the AllCalcData structure.
+
+        Returns:
+            tuple: A tuple containing:
+                - AllCalcData (dict): The loaded data structure from the .mat file.
+                - countries (list): List of all available countries.
+                - sdr_countries (list): List of SDR countries.
+        """
+        try:
+            mat = scipy.io.loadmat(self.file_path)
+            self.AllCalcData = mat['AllCalcData']
+            return self.AllCalcData, self.countries, self.sdr_countries
+        except FileNotFoundError:
+            raise FileNotFoundError(f"The file {self.file_path} was not found.")
+        except KeyError:
+            raise KeyError("The .mat file does not contain the expected 'AllCalcData' structure.")
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while loading the .mat file: {e}")
+
+    def process_data(self, country):
+        """
+        Processes the yield curve data for a specific country.
+
+        Args:
+            country (str): The country to extract data for.
+
+        Returns:
+            tuple: A tuple containing:
+                - selectedCurveName (str): The name of the selected yield curve.
+                - selected_curve_data (dict): The data for the selected yield curve.
+                - modelParams (dict): The model parameters for the yield curve.
+
+        Raises:
+            ValueError: If the specified country is not in the list of available countries.
+            KeyError: If the yield curve for the country is not found in AllCalcData.
+        """
+        if country not in self.countries:
+            raise ValueError(f"Country '{country}' is not available. Please select from: {self.countries}")
+
+        try:
+            selectedCurveName = f"{country}GovernmentNominal"
+            selected_curve = self.AllCalcData[selectedCurveName]
+            selected_curve_data = selected_curve[0][0][0, 0][0]
+            curve_parameters = selected_curve_data['CurMethodParameters'][0][0]
+
+            modelParams = self._extract_model_params(curve_parameters)
+            return selectedCurveName, selected_curve_data, modelParams
+        except KeyError:
+            raise KeyError(f"The yield curve data for country '{country}' could not be found in AllCalcData.")
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while processing data for country '{country}': {e}")
+
+    def _extract_model_params(self, curve_parameters):
+        """
+        Extracts model parameters from the curve parameters structure.
+
+        Args:
+            curve_parameters (dict): The curve parameters structure from the .mat file.
+
+        Returns:
+            dict: A dictionary containing the extracted model parameters.
+        """
+        try:
+            modelParams = {
+                'deltaC': float(curve_parameters['deltaC'][0][0][0]),
+                'gammaC': float(curve_parameters['gammaC'][0][0][0]),
+                'deltaS': float(curve_parameters['deltaS'][0][0][0]),
+                'gammaS': float(curve_parameters['gammaS'][0][0][0]),
+                'fCurvatureConstr': bool(int(curve_parameters['fCurvatureConstr'][0][0][0])),
+                'alphabar': float(curve_parameters['alphabar'][0][0][0]),
+                'y_minOffset': float(curve_parameters['y_minOffset'][0][0][0])
+            }
+            return modelParams
+        except KeyError as e:
+            raise KeyError(f"Missing parameter in curve_parameters: {e}")
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while extracting model parameters: {e}")
+
+    def get_available_countries(self):
+        """
+        Returns the list of available countries.
+
+        Returns:
+            list: List of available countries.
+        """
+        return self.countries
+
+    def get_sdr_countries(self):
+        """
+        Returns the list of SDR countries.
+
+        Returns:
+            list: List of SDR countries.
+        """
+        return self.sdr_countries

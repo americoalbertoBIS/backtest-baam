@@ -50,7 +50,7 @@ def check_existing_results(country, save_dir, target_col, model_name, method_nam
     country_save_dir = os.path.join(save_dir, country)
 
     # Search for the full predictions file pattern in the country folder
-    file_pattern = os.path.join(country_save_dir, f"{target_col}_forecasts_{cleaned_model_name}*.csv")
+    file_pattern = os.path.join(country_save_dir, f"{target_col}_forecasts_{cleaned_model_name}.csv")
     matching_files = glob.glob(file_pattern)
 
     # Check if any matching file exists
@@ -141,7 +141,7 @@ def log_backtest_results(df, target_col, model_name, method_name, horizons, pred
 
         plot_file = os.path.join(r"C:\git\backtest-baam\graphs", f"forecast_vs_actuals_{model_name}_{method_name}_{timestamp}.png")
         realized_beta = df[target_col]
-        plot_forecasts_with_actuals(df_predictions, realized_beta, model=model_name, save_path=plot_file)
+        plot_forecasts_with_actuals(target_col, df_predictions, realized_beta, model=model_name, save_path=plot_file)
         mlflow.log_artifact(plot_file)
 
     return None #pd.concat(all_metrics)

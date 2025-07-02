@@ -3,184 +3,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 metrics_df_raw = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries.csv")
-metrics_df = metrics_df_raw.iloc[1066:,:].copy()
+metrics_df_old = metrics_df_raw.iloc[1066:,:].copy()
 
-def plot_returns_vs_var_cvar_by_execution_date_long(data, maturity, horizon):
-    """
-    Plot observed historical annual returns vs VaR, CVaR, and expected returns
-    for a given maturity and forecasting horizon over execution dates.
-
-    Args:
-        data (pd.DataFrame): Long-format dataset containing metrics in the "Metric" column.
-        maturity (float): The maturity (in years) to plot.
-        horizon (float): The forecasting horizon (in years) to plot.
-    """
-    # Filter data for the selected maturity and horizon
-    filtered_data = data[
-        (data["Maturity (Years)"] == maturity) &
-        (data["Horizon (Years)"] == horizon)
-    ]
-
-    # Debugging: Check filtered data
-    if filtered_data.empty:
-        print(f"No data available for Maturity: {maturity} Years, Horizon: {horizon} Years")
-        return
-    
-    print("Filtered Data Columns:", filtered_data.columns)
-    print(filtered_data.head())
-
-    # Initialize the plot
-    plt.figure(figsize=(12, 6))
-
-    # Plot observed historical returns
-    sns.lineplot(
-        data=filtered_data[filtered_data["Metric"] == "Observed Annual Return"],
-        x="Execution Date",
-        y="Value",
-        label="Observed Returns",
-        color="blue",
-    )
-
-    # Plot VaR
-    sns.lineplot(
-        data=filtered_data[filtered_data["Metric"] == "VaR"],
-        x="Execution Date",
-        y="Value",
-        label="VaR (Threshold)",
-        color="red",
-        linestyle="--",
-    )
-
-    # Plot CVaR
-    sns.lineplot(
-        data=filtered_data[filtered_data["Metric"] == "CVaR"],
-        x="Execution Date",
-        y="Value",
-        label="CVaR (Tail Risk)",
-        color="orange",
-        linestyle=":",
-    )
-
-    # Plot Expected Returns
-    sns.lineplot(
-        data=filtered_data[filtered_data["Metric"] == "Expected Returns"],
-        x="Execution Date",
-        y="Value",
-        label="Expected Returns",
-        color="green",
-        linestyle="-.",
-    )
-
-    # Highlight breaches (Observed < VaR)
-    observed_data = filtered_data[filtered_data["Metric"] == "Observed Annual Return"]
-    var_data = filtered_data[filtered_data["Metric"] == "VaR"]
-    breaches = observed_data.merge(var_data, on=["Execution Date"], suffixes=("_obs", "_var"))
-    breaches = breaches[breaches["Value_obs"] < breaches["Value_var"]]
-
-    plt.scatter(
-        breaches["Execution Date"],
-        breaches["Value_obs"],
-        color="black",
-        label="VaR Breaches",
-        zorder=5,
-    )
-
-    # Add labels, title, and legend
-    plt.axhline(0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
-    plt.title(f"Observed Returns vs VaR, CVaR, and Expected Returns\n"
-              f"(Maturity: {maturity} Years, Horizon: {horizon} Years)", fontsize=14)
-    plt.xlabel("Execution Date", fontsize=12)
-    plt.ylabel("Returns", fontsize=12)
-    plt.legend(fontsize=10)
-    plt.grid(alpha=0.6, linestyle="--")
-    plt.tight_layout()
-    plt.show()
-
-# Example usage
-# Assuming `metrics_df` is the long-format DataFrame
-maturity_to_plot = 2.0  # Example: 1-year maturity
-horizon_to_plot = 5.0   # Example: 1-year forecasting horizon
-metrics_df["Value"] = pd.to_numeric(metrics_df["Value"], errors="coerce")
-metrics_df["Execution Date"] = pd.to_datetime(metrics_df["Execution Date"])
-plot_returns_vs_var_cvar_by_execution_date_long(metrics_df, maturity_to_plot, horizon_to_plot)
-
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import numpy as np
-
-def plot_3d_rmse_by_execution_date(data, horizon):
-    """
-    Create a 3D plot for RMSE values across execution dates and maturities for a specific horizon.
-
-    Args:
-        data (pd.DataFrame): Dataset containing RMSE values with columns:
-            - "Execution Date"
-            - "Maturity (Years)"
-            - "Horizon (Years)"
-            - "Metric"
-            - "Value"
-        horizon (float): The forecasting horizon (in years) to plot.
-    """
-    # Filter the data for the selected horizon and RMSE metric
-    rmse_data = data[(data["Horizon (Years)"] == horizon) & (data["Metric"] == "RMSE")]
-
-    # Pivot the data to create a grid for execution dates, maturities, and RMSE values
-    rmse_pivot = rmse_data.pivot(index="Maturity (Years)", columns="Execution Date", values="Value")
-
-    # Convert execution dates to numeric (ordinal format)
-    rmse_pivot.columns = rmse_pivot.columns.map(pd.Timestamp.toordinal)
-
-    # Handle missing values by filling NaN with 0
-    rmse_pivot = rmse_pivot.fillna(0)
-
-    # Create the grid for the 3D plot
-    X, Y = np.meshgrid(rmse_pivot.columns, rmse_pivot.index)  # X: Execution Dates, Y: Maturities
-    Z = rmse_pivot.values  # Z: RMSE values
-
-    # Debugging: Check the data
-    print("X (Execution Dates):", X)
-    print("Y (Maturities):", Y)
-    print("Z (RMSE Values):", Z)
-    print("Z Data Type:", Z.dtype)
-
-    # Initialize the 3D plot
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Plot the surface
-    surf = ax.plot_surface(
-        X, Y, Z, cmap="viridis", edgecolor="k", alpha=0.8
-    )
-
-    # Format the x-axis as dates
-    ax.set_xticks(X[0][::len(X[0]) // 10])  # Show fewer date ticks for readability
-    ax.set_xticklabels([pd.Timestamp.fromordinal(int(date)).strftime('%Y-%m-%d') for date in X[0][::len(X[0]) // 10]], rotation=45)
-
-    # Add labels and title
-    ax.set_xlabel("Execution Date", fontsize=12)
-    ax.set_ylabel("Maturity (Years)", fontsize=12)
-    ax.set_zlabel("RMSE", fontsize=12)
-    ax.set_title(f"3D Plot of RMSE by Execution Date and Maturity\n(Horizon: {horizon} Years)", fontsize=14)
-
-    # Add a color bar
-    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10, label="RMSE")
-
-    # Show the plot
-    plt.tight_layout()
-    plt.show()
-
-# Example usage
-# Assuming `metrics_df` is your dataset with RMSE values
-horizon_to_plot = 5.0  # Example: 5-year horizon
-plot_3d_rmse_by_execution_date(metrics_df, horizon_to_plot)
-
-import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 
-def plot_3d_rmse_interactive(data, horizon, output_html="rmse_plot.html"):
+def plot_3d_rmse_interactive_1(data, horizon, output_html="rmse_plot_AR1.html"):
     """
-    Create an interactive 3D plot for RMSE values across execution dates and maturities
+    Create an interactive 3D plot for RMSE values across maturities and execution dates
     for a specific horizon using Plotly, and save it as an HTML file.
 
     Args:
@@ -193,37 +24,47 @@ def plot_3d_rmse_interactive(data, horizon, output_html="rmse_plot.html"):
         horizon (float): The forecasting horizon (in years) to plot.
         output_html (str): The file name to save the interactive plot as an HTML file.
     """
+    # Ensure Execution Date is in datetime format
+    data["Execution Date"] = pd.to_datetime(data["Execution Date"], errors="coerce")
+
     # Filter the data for the selected horizon and RMSE metric
     rmse_data = data[(data["Horizon (Years)"] == horizon) & (data["Metric"] == "RMSE")]
 
+    # Remove duplicate rows for the same Execution Date and Maturity (Years)
+    #rmse_data = rmse_data.sort_values(by=["Execution Date", "Maturity (Years)", "Value"])  # Sort by Value if needed
+    #rmse_data = rmse_data.drop_duplicates(subset=["Execution Date", "Maturity (Years)"], keep="first")
+    #rmse_data["Maturity (Years)"] = rmse_data["Maturity (Years)"].astype(float)
     # Pivot the data to create a grid for execution dates, maturities, and RMSE values
-    rmse_pivot = rmse_data.pivot(index="Maturity (Years)", columns="Execution Date", values="Value")
-
-    # Convert execution dates to numeric (ordinal format) for plotting
-    rmse_pivot.columns = rmse_pivot.columns.map(pd.Timestamp.toordinal)
+    rmse_pivot = rmse_data.pivot(index="Execution Date", columns="Maturity (Years)", values="Value")
 
     # Handle missing values by filling NaN with 0
-    rmse_pivot = rmse_pivot.fillna(0)
+    #rmse_pivot = rmse_pivot.fillna(0)
+
+    # Convert execution dates to numeric (ordinal format) for plotting
+    execution_dates_ordinal = rmse_pivot.index.map(pd.Timestamp.toordinal)
 
     # Create the grid for the 3D plot
-    X, Y = np.meshgrid(rmse_pivot.columns, rmse_pivot.index)  # X: Execution Dates, Y: Maturities
-    Z = rmse_pivot.values  # Z: RMSE values
+    X, Y = np.meshgrid(execution_dates_ordinal, rmse_pivot.columns)  # X: Execution Dates, Y: Maturities
+    Z = rmse_pivot.T.values  # Transpose the Z matrix to match the swapped axes
+
+    # Replace zeros in Z with NaN
+    #Z[Z == 0] = np.nan
 
     # Convert execution dates back to human-readable strings for hover labels
-    execution_dates = [pd.Timestamp.fromordinal(int(date)).strftime('%Y-%m-%d') for date in rmse_pivot.columns]
+    execution_dates_str = rmse_pivot.index.strftime('%Y-%m-%d')
 
     # Create the 3D surface plot
     fig = go.Figure(data=[go.Surface(
         z=Z,
-        x=execution_dates,  # Use human-readable dates for the x-axis
-        y=rmse_pivot.index,  # Maturities
+        x=execution_dates_str,  # Use human-readable dates for the x-axis
+        y=rmse_pivot.columns,  # Maturities for the y-axis
         colorscale="Viridis",
         colorbar=dict(title="RMSE"),
     )])
 
     # Update layout for better visualization
     fig.update_layout(
-        title=f"Interactive 3D Plot of RMSE by Execution Date and Maturity<br>(Horizon: {horizon} Years)",
+        title=f"Interactive 3D Plot of RMSE by Maturity and Execution Date<br>(Horizon: {horizon} Years)",
         scene=dict(
             xaxis_title="Execution Date",
             yaxis_title="Maturity (Years)",
@@ -239,52 +80,154 @@ def plot_3d_rmse_interactive(data, horizon, output_html="rmse_plot.html"):
     # Show the plot
     fig.show()
 
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+
+def plot_3d_rmse_interactive_2(metrics_df):
+    """
+    Create an interactive 3D plot for RMSE values using Plotly, with gridlines.
+
+    Args:
+        metrics_df (pd.DataFrame): DataFrame containing RMSE values with columns:
+            - "Maturity (Years)"
+            - "Horizon (Years)"
+            - "Metric"
+            - "Value"
+    """
+    import pandas as pd
+    import numpy as np
+    import plotly.graph_objects as go
+
+    # Filter the DataFrame for RMSE values
+    rmse_df = metrics_df[metrics_df["Metric"] == "RMSE"]
+    rmse_df['Value'] = pd.to_numeric(rmse_df['Value']) * 100  # Convert to percentage if needed
+
+    # Extract unique maturities and horizons
+    maturities = sorted(rmse_df["Maturity (Years)"].unique())
+    horizons = sorted(rmse_df["Horizon (Years)"].unique())
+
+    # Create a meshgrid for maturities and horizons
+    X, Y = np.meshgrid(maturities, horizons)
+
+    # Map RMSE values to the grid
+    Z = np.zeros_like(X, dtype=float)
+    for i, horizon in enumerate(horizons):
+        for j, maturity in enumerate(maturities):
+            # Get RMSE value for the current maturity and horizon
+            value = rmse_df[
+                (rmse_df["Maturity (Years)"] == maturity) &
+                (rmse_df["Horizon (Years)"] == horizon)
+            ]["Value"].values
+            Z[i, j] = value[0] if len(value) > 0 else np.nan  # Handle missing values
+
+    # Create the 3D surface plot using Plotly
+    fig = go.Figure(data=[go.Surface(
+        z=Z,
+        x=maturities,  # Maturities on the x-axis
+        y=horizons,  # Horizons on the y-axis
+        colorscale="Viridis",  # Color scheme
+        colorbar=dict(title="RMSE (%)"),  # Add color bar
+        contours=dict(  # Add gridlines
+            x=dict(show=True, color="white", width=2),
+            y=dict(show=True, color="white", width=2),
+            #z=dict(show=True, color="white", width=2),
+        )
+    )])
+
+    # Update layout for better visualization
+    fig.update_layout(
+        title="Interactive 3D Plot of RMSE with Gridlines",
+        scene=dict(
+            xaxis_title="Maturity (Years)",
+            yaxis_title="Horizon (Years)",
+            zaxis_title="RMSE (%)",
+            xaxis=dict(tickmode="linear"),  # Ensure ticks are linear
+            yaxis=dict(tickmode="linear"),
+            aspectratio=dict(x=1, y=1, z=0.5)
+        ),
+        margin=dict(l=0, r=0, b=0, t=50),  # Reduce margins
+    )
+    
+    # Save the plot as an HTML file
+    output_html = r"C:\rmse_3d_plot_AR1_maturity_horizons.html"
+    fig.write_html(output_html)
+    print(f"Interactive 3D plot saved as {output_html}")
+
+    # Optionally show the plot
+    # fig.show()
+plot_3d_rmse_interactive_2(metrics_df)
+
 # Example usage
 # Assuming `metrics_df` is your dataset with RMSE values
 horizon_to_plot = 5.0  # Example: 5-year horizon
-plot_3d_rmse_interactive(metrics_df, horizon_to_plot, output_html=r"C:\rmse_3d_plot.html")
+plot_3d_rmse_interactive_1(metrics_df, horizon_to_plot, output_html=r"C:\rmse_3d_plot_AR1_new.html")
 
-import seaborn as sns
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
-# Filter for Pass/Fail metrics
-pass_fail_data = metrics_df[metrics_df["Metric"].isin([
-    "Kupiec POF Test Pass", "Christoffersen Independence Test Pass"
-])]
+def plot_var_cvar_over_execution_dates(metrics_df, maturity, horizon):
+    """
+    Plot VaR, CVaR, Observed Returns, and Expected Returns for a single horizon and maturity across all execution dates.
 
-# Plot the pass/fail counts
-sns.countplot(data=pass_fail_data, x="Metric", hue="Value", palette="Set2")
-plt.title("Kupiec and Christoffersen Test Pass/Fail Counts")
-plt.xlabel("Metric")
-plt.ylabel("Count")
-plt.legend(title="Pass (1) / Fail (0)")
-plt.show()
+    Args:
+        metrics_df (pd.DataFrame): DataFrame containing precomputed metrics with columns:
+            - "Execution Date"
+            - "Horizon (Years)"
+            - "Maturity (Years)"
+            - "Metric"
+            - "Value"
+        maturity (float): The maturity (in years) to plot (e.g., 1.0).
+        horizon (float): The horizon (in years) to plot (e.g., 1.0).
+    """
+    # Filter the DataFrame for the given horizon, maturity, and metrics
+    filtered_df = metrics_df[
+        (metrics_df["Horizon (Years)"] == horizon) &
+        (metrics_df["Maturity (Years)"] == maturity) &
+        (metrics_df["Metric"].isin(["VaR", "CVaR", "Observed Annual Return", "Expected Returns"]))
+    ]
 
-# Filter for test statistics
-test_stat_data = metrics_df[metrics_df["Metric"].isin([
-    "Kupiec POF Test Statistic", "Christoffersen Independence Test Statistic"
-])]
+    # Check for duplicates
+    duplicate_rows = filtered_df[filtered_df.duplicated(subset=["Execution Date", "Metric"], keep=False)]
+    if not duplicate_rows.empty:
+        print("Duplicate rows detected:")
+        print(duplicate_rows)
 
-# Create a pivot table for heatmap
-kupiec_stat_pivot = test_stat_data[test_stat_data["Metric"] == "Kupiec POF Test Statistic"].pivot(
-    index="Maturity (Years)", columns="Horizon (Years)", values="Value"
-)
-christoffersen_stat_pivot = test_stat_data[test_stat_data["Metric"] == "Christoffersen Independence Test Statistic"].pivot(
-    index="Maturity (Years)", columns="Horizon (Years)", values="Value"
-)
+        # Aggregate duplicates (e.g., take the mean of duplicate values)
+        filtered_df = filtered_df.groupby(["Execution Date", "Metric"], as_index=False)["Value"].mean()
 
-# Plot heatmap for Kupiec POF Test Statistic
-plt.figure(figsize=(12, 6))
-sns.heatmap(kupiec_stat_pivot, annot=True, fmt=".2f", cmap="YlGnBu", cbar_kws={"label": "Test Statistic"})
-plt.title("Kupiec POF Test Statistic Heatmap")
-plt.xlabel("Horizon (Years)")
-plt.ylabel("Maturity (Years)")
-plt.show()
+    # Pivot the data to align metrics by execution date
+    pivot_df = filtered_df.pivot(index="Execution Date", columns="Metric", values="Value")
 
-# Plot heatmap for Christoffersen Independence Test Statistic
-plt.figure(figsize=(12, 6))
-sns.heatmap(christoffersen_stat_pivot, annot=True, fmt=".2f", cmap="YlOrRd", cbar_kws={"label": "Test Statistic"})
-plt.title("Christoffersen Independence Test Statistic Heatmap")
-plt.xlabel("Horizon (Years)")
-plt.ylabel("Maturity (Years)")
-plt.show()
+    # Ensure all required metrics are present
+    required_metrics = ["VaR", "CVaR", "Observed Annual Return", "Expected Returns"]
+    for metric in required_metrics:
+        if metric not in pivot_df.columns:
+            print(f"Missing metric: {metric}")
+            return
+
+    # Plot
+    plt.figure(figsize=(12, 6))
+    plt.plot(pivot_df.index, pivot_df["Observed Annual Return"], label="Observed Returns", color="blue", alpha=0.7)
+    plt.plot(pivot_df.index, pivot_df["Expected Returns"], label="Expected Returns", color="green", alpha=0.7)
+    plt.plot(pivot_df.index, pivot_df["VaR"], label="VaR (Threshold)", color="red", linestyle="--")
+    plt.plot(pivot_df.index, pivot_df["CVaR"], label="CVaR (Tail Average)", color="orange", linestyle=":")
+
+    # Highlight breaches where Observed Returns < VaR
+    breaches = pivot_df["Observed Annual Return"] < pivot_df["VaR"]
+    plt.scatter(pivot_df.index[breaches], pivot_df["Observed Annual Return"][breaches], 
+                color="black", label="VaR Breaches", zorder=5)
+
+    # Add labels and legend
+    plt.axhline(0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
+    plt.title(f"VaR, CVaR, Observed, and Expected Returns Across Execution Dates (Horizon={horizon}y, Maturity={maturity}y)", fontsize=14)
+    plt.xlabel("Execution Date", fontsize=12)
+    plt.ylabel("Returns", fontsize=12)
+    plt.legend(fontsize=10)
+    plt.grid(alpha=0.6, linestyle="--")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+    
+plot_var_cvar_over_execution_dates(metrics_df, maturity=1.0, horizon=1.0)

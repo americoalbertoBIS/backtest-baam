@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-def plot_forecasts_with_actuals(df_predictions, realized_beta, model='AR(1)', save_path=None):
+def plot_forecasts_with_actuals(target_col, df_predictions, realized_beta, model='AR(1)', save_path=None):
     plt.figure(figsize=(10, 6))
     unique_execution_dates = df_predictions['ExecutionDate'].unique()
 
@@ -14,7 +14,7 @@ def plot_forecasts_with_actuals(df_predictions, realized_beta, model='AR(1)', sa
     plt.plot(realized_beta[(realized_beta.index > '1990') & (realized_beta.index < '2026')], color='black', linewidth=2, label="Actual Beta 1")
     plt.title(f"{model}: Forecasted vs Actual")
     plt.xlabel("Date")
-    plt.ylabel("Beta 1")
+    plt.ylabel(f"{target_col}")
     plt.legend(fontsize='small')
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
