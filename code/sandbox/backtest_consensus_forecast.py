@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from sklearn.metrics import mean_squared_error
 
+# Set working directory
+os.chdir(r'C:\git\backtest-baam\code')
+
 # Import custom modules
 from data_preparation.data_loader import DataLoader
 from data_preparation.conensus_forecast import ConsensusForecast
@@ -19,8 +22,7 @@ from modeling.macro_modeling import convert_gdp_to_monthly
 from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
 from medau import read_fred
 
-# Set working directory
-os.chdir(r'C:\git\backtest-baam\code')
+
 
 # Constants
 PUBLICATION_LAGS = {"GDP": 3, "CPI": 1, "STR": 0, "LTR": 0}  # Publication lags by indicator
@@ -301,6 +303,11 @@ data = data.astype(float)
 indicators = ["GDP", "CPI", "STR", "LTR"]
 macro = ["GDP", "CPI"]  # Indicators requiring special transformations
 
+master_df = pd.DataFrame()
+master_rmse_horizon = pd.DataFrame()
+master_rmse_exec = pd.DataFrame()
+master_rmse_horizon_exec = pd.DataFrame()
+
 for country in ['US', 'EA', 'UK']:
     # Prepare macro data
     df_macro = prepare_macro_data(country)
@@ -317,7 +324,10 @@ for country in ['US', 'EA', 'UK']:
 
         # Prepare forecast data
         try:
-            df_consensus, _ = prepare_forecast_data(country, indicator)
+            if indicator == 'CPI':
+                df_consensus, _ = prepare_forecast_data(country, 'INF')
+            else:
+                df_consensus, _ = prepare_forecast_data(country, indicator)
         except Exception as e:
             print(f"Error preparing consensus forecast data for {country} - {indicator}: {e}")
             continue
@@ -338,7 +348,23 @@ for country in ['US', 'EA', 'UK']:
         except Exception as e:
             print(f"Error running backtest for {country} - {indicator}: {e}")
             continue
+        
+        rmse_horizon['country'] = country
+        rmse_horizon['indicator'] = indicator
 
+        rmse_exec['country'] = country
+        rmse_exec['indicator'] = indicator
+
+        rmse_horizon_exec['country'] = country
+        rmse_horizon_exec['indicator'] = indicator
+        
+        master_rmse_horizon = pd.concat([master_rmse_horizon, rmse_horizon], ignore_index=True)
+        master_rmse_exec = pd.concat([master_rmse_exec, rmse_exec], ignore_index=True)
+        master_rmse_horizon_exec = pd.concat([master_rmse_horizon_exec, rmse_horizon_exec], ignore_index=True)
+        
+        final_df['country'] = country
+        master_df = pd.concat([master_df, final_df], ignore_index=True)
+        
         # Plot forecasts vs. realized values
         try:
             plot_forecast_with_realized(
@@ -359,3 +385,11 @@ for country in ['US', 'EA', 'UK']:
         except Exception as e:
             print(f"Error plotting RMSE metrics for {country} - {indicator}: {e}")
             continue
+
+output_file = r"L:\RMAS\Users\Alberto\backtest-baam\data\backtest_results_all_countries_indicators.csv"
+master_df.to_csv(output_file, index=False)
+
+master_rmse_horizon.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv", index=False)
+master_rmse_exec.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv", index=False)
+master_rmse_horizon_exec.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv", index=False)
+

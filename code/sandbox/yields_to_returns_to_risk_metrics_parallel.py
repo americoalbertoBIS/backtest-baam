@@ -673,11 +673,13 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
 
 
 models_configurations = {
-    "AR_1": {
-        "beta1": "AR_1",
-        "beta2": "AR_1",
-        "beta3": "AR_1"
-    },
+# =============================================================================
+#     "AR_1": {
+#         "beta1": "AR_1",
+#         "beta2": "AR_1",
+#         "beta3": "AR_1"
+#     },
+# =============================================================================
     "AR_1_Output_Gap_Direct_Inflation_UCSV": {
         "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
         "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
@@ -690,9 +692,9 @@ models_configurations = {
     }
 }
 
-country = 'US'
-model_name = 'AR_1'
-model_config = models_configurations[model_name]
+#country = 'US'
+#model_name = 'AR_1'
+#model_config = models_configurations[model_name]
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
@@ -700,19 +702,22 @@ max_workers = max(1, multiprocessing.cpu_count() // 2)
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    #mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
     # Define the experiment name (e.g., based on the project name)
-    experiment_name = "Yield Curve Backtest"
-    mlflow.set_experiment(experiment_name)  # Set the experiment name
+    #experiment_name = "Yield Curve Backtest"
+    #mlflow.set_experiment(experiment_name)  # Set the experiment name
 
-    countries = ['US']  # Add other countries if needed (e.g., 'EA', 'UK')
+    countries = ['US', 'EA']  # Add other countries if needed (e.g., 'EA', 'UK')
     data_loader = DataLoader(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     for country in countries:
         # Initialize data loader and yield curve model
         _, _, _ = data_loader.load_data()
-        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
+        if country == 'EA':
+            selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
+        else:
+            selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
         modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})
         yield_curve_model = YieldCurveModel(selected_curve_data, modelParams)
 
@@ -753,121 +758,4 @@ if __name__ == "__main__":
                         #logging.error(f"Error processing execution date: {e}", exc_info=True)
                         print(f"Error processing execution date: {e}")
 
-# Load metrics_timeseries.csv
-metrics_df_raw = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries_AR_1.csv")
-metrics_df = metrics_df_raw.copy()
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-def plot_3d_rmse(metrics_df):
-    """
-    Create a 3D plot for RMSE values.
-
-    Args:
-        metrics_df (pd.DataFrame): DataFrame containing RMSE values with columns:
-            - "Maturity (Years)"
-            - "Horizon (Years)"
-            - "Metric"
-            - "Value"
-    """
-    # Filter the DataFrame for RMSE values
-    rmse_df = metrics_df[metrics_df["Metric"] == "RMSE"]
-    rmse_df['Value'] = pd.to_numeric(rmse_df['Value'])*100
-    # Extract unique maturities and horizons
-    maturities = rmse_df["Maturity (Years)"].unique()
-    horizons = rmse_df["Horizon (Years)"].unique()
-
-    # Create a meshgrid for maturities and horizons
-    X, Y = np.meshgrid(maturities, horizons)
-
-    # Map RMSE values to the grid
-    Z = np.zeros_like(X, dtype=float)
-    for i, horizon in enumerate(horizons):
-        for j, maturity in enumerate(maturities):
-            # Get RMSE value for the current maturity and horizon
-            value = rmse_df[
-                (rmse_df["Maturity (Years)"] == maturity) &
-                (rmse_df["Horizon (Years)"] == horizon)
-            ]["Value"].values 
-            Z[i, j] = value[0] if len(value) > 0 else np.nan  # Handle missing values
-
-    # Create a 3D plot
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Plot the surface
-    surf = ax.plot_surface(X, Y, Z, cmap="viridis", edgecolor="k", alpha=0.8)
-
-    # Add labels and title
-    ax.set_xlabel("Maturity (Years)", fontsize=12)
-    ax.set_ylabel("Horizon (Years)", fontsize=12)
-    ax.set_zlabel("RMSE", fontsize=12)
-    ax.set_title("3D Plot of RMSE", fontsize=14)
-
-    # Add a color bar
-    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10, label="RMSE")
-
-    # Show the plot
-    plt.tight_layout()
-    plt.show()                    
-
-
-
-# Plot 3D RMSE
-plot_3d_rmse(metrics_df)
-
-import matplotlib.pyplot as plt
-
-def plot_var_cvar(yield_curve_processor, maturity, horizon):
-    """
-    Plot observed returns, VaR, CVaR, and breaches dynamically.
-
-    Args:
-        yield_curve_processor (YieldCurveProcessor): Instance of the YieldCurveProcessor class.
-        maturity (float): The maturity (in years) to plot.
-        horizon (float): The horizon (in years) to plot.
-    """
-    # Compute observed returns dynamically
-    observed_yields = yield_curve_processor.aligned_observed_yields_df[f"{maturity} years"]
-    observed_returns = observed_yields.pct_change(fill_method=None).dropna()*100  # Percentage change in yields*
-
-    # Compute VaR and CVaR dynamically
-    horizon_months = int(horizon * 12)  # Convert horizon to months
-    simulated_yields = yield_curve_processor.simulated_observed_yields_df.xs(maturity, level="Maturity", axis=1)
-    horizon_end_date = yield_curve_processor.execution_date + pd.DateOffset(months=horizon_months)
-    simulated_horizon = simulated_yields.loc[
-        (simulated_yields.index <= horizon_end_date)
-    ]
-
-    # Compute VaR and CVaR
-    var_values = simulated_horizon.quantile(CONFIDENCE_LEVEL, axis=1)
-    cvar_values = simulated_horizon[simulated_horizon.le(var_values, axis=0)].mean(axis=1)
-
-    # Align observed returns with VaR and CVaR
-    aligned_data = pd.concat([observed_returns, var_values, cvar_values], axis=1, join="inner")
-    aligned_data.columns = ["Observed Returns", "VaR", "CVaR"]
-
-    # Identify breaches (observed returns below VaR)
-    breaches = aligned_data["Observed Returns"] < aligned_data["VaR"]
-
-    # Plot
-    plt.figure(figsize=(12, 6))
-    plt.plot(aligned_data.index, aligned_data["Observed Returns"], label="Observed Returns", color="blue", alpha=0.7)
-    plt.plot(aligned_data.index, aligned_data["VaR"], label="VaR (Threshold)", color="red", linestyle="--")
-    plt.plot(aligned_data.index, aligned_data["CVaR"], label="CVaR (Tail Average)", color="orange", linestyle=":")
-    plt.scatter(aligned_data.index[breaches], aligned_data["Observed Returns"][breaches], 
-                color="black", label="VaR Breaches", zorder=5)
-
-    # Add labels and legend
-    plt.axhline(0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
-    plt.title(f"VaR and CVaR Visualization (Maturity={maturity}y, Horizon={horizon}y)", fontsize=14)
-    plt.xlabel("Date", fontsize=12)
-    plt.ylabel("Returns", fontsize=12)
-    plt.legend(fontsize=10)
-    plt.grid(alpha=0.6, linestyle="--")
-    plt.tight_layout()
-    plt.show()
-    
-# Example: Plot for maturity = 1 year and horizon = 1 year
-plot_var_cvar(processor, maturity=1.0, horizon=1.0)

@@ -2,8 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-metrics_df_raw = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries.csv")
-metrics_df_old = metrics_df_raw.iloc[1066:,:].copy()
+metrics_df = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries_Mixed_Model.csv")
 
 import pandas as pd
 import numpy as np
@@ -156,12 +155,13 @@ def plot_3d_rmse_interactive_2(metrics_df):
 
     # Optionally show the plot
     # fig.show()
+    
 plot_3d_rmse_interactive_2(metrics_df)
 
 # Example usage
 # Assuming `metrics_df` is your dataset with RMSE values
-horizon_to_plot = 5.0  # Example: 5-year horizon
-plot_3d_rmse_interactive_1(metrics_df, horizon_to_plot, output_html=r"C:\rmse_3d_plot_AR1_new.html")
+horizon_to_plot = 2.0  # Example: 5-year horizon
+plot_3d_rmse_interactive_1(metrics_df, horizon_to_plot, output_html=r"C:\rmse_3d_plot_AR1_horizon2.html")
 
 
 import matplotlib.pyplot as plt
@@ -230,4 +230,15 @@ def plot_var_cvar_over_execution_dates(metrics_df, maturity, horizon):
     plt.tight_layout()
     plt.show()
     
-plot_var_cvar_over_execution_dates(metrics_df, maturity=1.0, horizon=1.0)
+plot_var_cvar_over_execution_dates(metrics_df, maturity=1.0, horizon=5.0)
+
+
+rmse_by_horizon = metrics_df.groupby("Horizon (Years)").apply(
+    lambda x: pd.Series({
+        "RMSE_AR1": calculate_rmse(x, "AR1_fcst", "actual"),
+        "RMSE_consensus": calculate_rmse(x, "consensus_fcst", "actual"),
+        "Volatility_AR1": x["AR1_fcst"].std(),
+        "Volatility_consensus": x["consensus_fcst"].std()
+    })
+).reset_index()
+

@@ -12,198 +12,171 @@ from data_preparation.data_loader import DataLoaderYC
 from modeling.yield_curve_modeling import YieldCurveModel
 from datetime import datetime
     
-def process_simulations_inner(args):
+import time
+import logging
+
+
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import time
+import logging
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    filename='progress.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def process_forecast_outer(args):
     """
-    Generate bootstrapped simulations for a single maturity and execution date.
+    Process a single maturity and execution date for deterministic forecasts.
 
     Args:
-        args (tuple): Contains (model_params, residuals, train_data_last_value, forecast_index, num_simulations_chunk, sim_id_start).
+        args (tuple): Contains (maturity, series, execution_date, forecast_horizon).
 
     Returns:
-        list: Simulation results for the given maturity and execution date.
+        list: Deterministic forecasts for the given maturity and execution date.
     """
-    model_params, residuals, train_data_last_value, forecast_index, num_simulations_chunk, sim_id_start, maturity, execution_date = args
-    simulations_results = []
+    try:
+        maturity, series, execution_date, forecast_horizon = args
+        forecast_results = []
 
-    for sim_id in range(sim_id_start, sim_id_start + num_simulations_chunk):
-        simulated_forecasts = []
-        current_value = train_data_last_value
+        # Ensure at least 3 years (36 months) of historical data is available
+        min_data_points = 36
+        train_data = series[:execution_date]
+        if len(train_data) < min_data_points:
+            logging.warning(f"Not enough data for maturity {maturity} and execution date {execution_date}. Skipping.")
+            return []  # Skip this task
 
-        for horizon in range(1, len(forecast_index) + 1):
-            # Add stochastic component (bootstrapped residuals with replacement)
-            error = np.random.choice(residuals, replace=True)
-            next_simulated_value = (
-                model_params["const"] + model_params["y"] * current_value + error
-            )
-            simulated_forecasts.append(next_simulated_value)
-            current_value = next_simulated_value
+        # Create lagged series for AR(1)
+        lagged_series = train_data.shift(1).dropna()
+        X = sm.add_constant(lagged_series.rename("lagged"))  # Rename the lagged series to "lagged"
+        y = train_data.loc[X.index]
 
-        # Store simulation results
-        simulations_results.extend([
+        # Validate that X and y are non-empty
+        if X.empty or y.empty:
+            logging.warning(f"Insufficient data for maturity {maturity} and execution date {execution_date}. Skipping.")
+            return []  # Return empty results for this task
+
+        # Fit AR(1) model
+        model = sm.OLS(y, X).fit()
+
+        # Extract model parameters
+        model_params = {"const": model.params["const"], "lagged": model.params["lagged"]}
+
+        # Generate deterministic forecasts
+        deterministic_forecasts = []
+        last_value = train_data.iloc[-1]
+        for _ in range(forecast_horizon):
+            next_forecast = model_params["const"] + model_params["lagged"] * last_value
+            deterministic_forecasts.append(next_forecast)
+            last_value = next_forecast
+
+        # Align deterministic forecasts with forecast dates
+        forecast_index = pd.date_range(
+            start=train_data.index[-1] + pd.DateOffset(months=1),
+            periods=forecast_horizon,
+            freq="MS"
+        )
+        actuals = series.loc[forecast_index]
+        horizons = np.arange(1, forecast_horizon + 1)
+
+        # Store deterministic forecasts
+        forecast_results.extend([
             {
                 "maturity": maturity,
                 "execution_date": execution_date,
                 "forecasted_date": forecast_index[i],
-                "horizon": i + 1,
-                "simulation_id": sim_id,
-                "simulated_value": simulated_forecasts[i]
+                "horizon": horizons[i],
+                "prediction": deterministic_forecasts[i],
+                "actual": actuals.iloc[i] if i < len(actuals) else np.nan
             }
             for i in range(len(forecast_index))
         ])
 
-    return simulations_results
+        return forecast_results
+    except Exception as e:
+        logging.error(f"Error in process_forecast_outer: {e}")
+        return []
 
 
-def process_forecast_and_simulations_outer(args, num_inner_workers):
+def run_yield_forecasts_parallel(country, observed_yields_df, forecast_horizon=60, num_outer_workers=4):
     """
-    Process a single maturity and execution date for forecasts and simulations.
-
-    Args:
-        args (tuple): Contains (maturity, series, execution_date, forecast_horizon, num_simulations).
-        num_inner_workers (int): Number of workers for inner parallelization.
-
-    Returns:
-        (list, list): Deterministic forecasts and simulations results.
-    """
-    maturity, series, execution_date, forecast_horizon, num_simulations = args
-    forecast_results = []
-    simulations_results = []
-
-    train_data = series[:execution_date]
-
-    # Create lagged series for AR(1)
-    lagged_series = train_data.shift(1).dropna()
-    X = sm.add_constant(lagged_series.rename("lagged"))  # Rename the lagged series to "lagged"
-    y = train_data.loc[X.index]
-
-    # Validate that X and y are non-empty
-    if X.empty or y.empty:
-        print(f"Warning: Insufficient data for maturity {maturity} and execution date {execution_date}. Skipping.")
-        return [], []  # Return empty results for this task
-
-    # Fit AR(1) model
-    model = sm.OLS(y, X).fit()
-
-    # Extract model parameters for pickling
-    model_params = {"const": model.params["const"], "lagged": model.params["lagged"]}
-
-    # Get residuals for bootstrapping
-    residuals = model.resid
-
-    # Generate deterministic forecasts
-    deterministic_forecasts = []
-    last_value = train_data.iloc[-1]
-    for _ in range(forecast_horizon):
-        next_forecast = model_params["const"] + model_params["lagged"] * last_value
-        deterministic_forecasts.append(next_forecast)
-        last_value = next_forecast
-
-    # Align deterministic forecasts with forecast dates
-    forecast_index = pd.date_range(
-        start=train_data.index[-1] + pd.DateOffset(months=1),
-        periods=forecast_horizon,
-        freq="MS"
-    )
-    actuals = series.loc[forecast_index]
-    horizons = np.arange(1, forecast_horizon + 1)
-
-    # Store deterministic forecasts
-    forecast_results.extend([
-        {
-            "maturity": maturity,
-            "execution_date": execution_date,
-            "forecasted_date": forecast_index[i],
-            "horizon": horizons[i],
-            "prediction": deterministic_forecasts[i],
-            "actual": actuals.iloc[i] if i < len(actuals) else np.nan
-        }
-        for i in range(len(forecast_index))
-    ])
-
-    # Split simulations into chunks for inner parallelization
-    num_simulations_chunk = max(1, num_simulations // num_inner_workers)
-    tasks = [
-        (
-            model_params, residuals, train_data.iloc[-1], forecast_index,
-            num_simulations_chunk, sim_id * num_simulations_chunk,
-            maturity, execution_date
-        )
-        for sim_id in range(num_inner_workers)
-    ]
-
-    # Run inner parallelization for simulations
-    with ProcessPoolExecutor(max_workers=num_inner_workers) as inner_executor:
-        futures = {inner_executor.submit(process_simulations_inner, task): task for task in tasks}
-
-        for future in as_completed(futures):
-            simulations_results.extend(future.result())
-
-    return forecast_results, simulations_results
-
-
-def run_yield_forecasts_and_simulations_parallel(country, observed_yields_df, forecast_horizon=60, num_simulations=1000, num_outer_workers=8, num_inner_workers=4):
-    """
-    Parallelized generation of deterministic forecasts and simulations for observed yields.
+    Parallelized generation of deterministic forecasts for observed yields.
 
     Args:
         observed_yields_df (pd.DataFrame): DataFrame of observed yields (columns are maturities, index is date).
         forecast_horizon (int): Number of months to forecast.
-        num_simulations (int): Number of simulations to generate for each forecast.
         num_outer_workers (int): Number of parallel workers for outer loop.
-        num_inner_workers (int): Number of parallel workers for inner loop.
 
     Returns:
         forecasts_df (pd.DataFrame): Long format DataFrame with deterministic forecasts.
-        simulations_df (pd.DataFrame): Long format DataFrame with bootstrapped simulation results.
     """
     start_time = time.time()  # Start the timer
 
     tasks = []
     forecast_results = []
-    simulations_results = []
 
-    # Define the minimum execution date
-    min_execution_date = datetime(1990, 1, 1)
-    
-    # Prepare tasks for outer parallel processing
+    # Minimum data points required (3 years of monthly data)
+    min_data_points = 36
+
+    # Prepare tasks for parallel processing
     for maturity in observed_yields_df.columns:
         series = observed_yields_df[maturity].dropna()
-        for execution_date in series.index[:-forecast_horizon]:
-            if execution_date < min_execution_date:
-                continue
-            tasks.append((maturity, series, execution_date, forecast_horizon, num_simulations))
+        for execution_date in series.index:
+            # Ensure at least 3 years of data before the execution date
+            train_data = series[:execution_date]
+            if len(train_data) < min_data_points:
+                continue  # Skip this execution date if insufficient data
 
-    # Run outer parallel processing
-    with ProcessPoolExecutor(max_workers=num_outer_workers) as outer_executor:
-        futures = {outer_executor.submit(process_forecast_and_simulations_outer, task, num_inner_workers): task for task in tasks}
+            tasks.append((maturity, series, execution_date, forecast_horizon))
+
+    total_tasks = len(tasks)  # Total number of tasks
+    logging.info(f"Total tasks to process: {total_tasks}")
+
+    completed_tasks = 0  # Counter for completed tasks
+
+    # Run parallel processing
+    with ProcessPoolExecutor(max_workers=num_outer_workers) as executor:
+        futures = {executor.submit(process_forecast_outer, task): task for task in tasks}
 
         for future in as_completed(futures):
-            forecast_res, simulation_res = future.result()
-            forecast_results.extend(forecast_res)
-            simulations_results.extend(simulation_res)
+            try:
+                forecast_results.extend(future.result())
 
-    # Convert results to DataFrames
+                # Update progress
+                completed_tasks += 1
+                if completed_tasks % 10 == 0 or completed_tasks == total_tasks:
+                    logging.info(f"Completed {completed_tasks}/{total_tasks} tasks.")
+            except Exception as e:
+                logging.error(f"Error in parallel processing: {e}")
+
+    # Convert results to DataFrame
     forecasts_df = pd.DataFrame(forecast_results)
-    simulations_df = pd.DataFrame(simulations_results)
 
     # Save results to Parquet
-    forecasts_df.to_parquet(f"C:\git\backtest-baam\data\{country}\{country}_observed_yields_forecasts_AR_1.parquet", index=False)
-    simulations_df.to_parquet(f"C:\git\backtest-baam\data\{country}\{country}_observed_yields_simulations_AR_1.parquet", index=False)
+    forecasts_df.to_csv(f"C:\\git\\backtest-baam\\data\\{country}\\{country}_observed_yields_forecasts_AR_1.csv", index=False)
 
     end_time = time.time()  # End the timer
-    print(f"Total execution time: {end_time - start_time:.2f} seconds")  # Print the execution time
+    logging.info(f"Total execution time: {end_time - start_time:.2f} seconds")
 
-    return forecasts_df, simulations_df
+    return forecasts_df
 
 
 if __name__ == "__main__":
-
-    country = 'US'
+    country = 'EA'
     # Load the yield curve data
-    data_loader = DataLoaderYC(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
+    data_loader = DataLoaderYC(r'L:\\RMAS\\Resources\\BAAM\\OpenBAAM\\Private\\Data\\BaseDB.mat')
     _, _, _ = data_loader.load_data()
-    selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
-
+    if country == 'EA':
+        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
+    else:
+        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
     # Update model parameters for the yield curve model
     modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})
     yield_curve_model = YieldCurveModel(selected_curve_data, modelParams)
@@ -221,14 +194,12 @@ if __name__ == "__main__":
     )
     observed_yields_df.index = pd.to_datetime(observed_yields_df.index)
     observed_yields_df_resampled = observed_yields_df.resample('MS').mean()
-    #observed_yields_df_resampled /= 100
-    observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]
-    # Run forecasts and simulations with a timer
-    forecasts_df, simulations_df = run_yield_forecasts_and_simulations_parallel(
+    observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]  # Drop the first column (e.g., 0.08333 years)
+
+    # Run forecasts with a timer
+    forecasts_df = run_yield_forecasts_parallel(
         country, 
         observed_yields_df_resampled,
         forecast_horizon=60,
-        num_simulations=1000,
-        num_outer_workers=8,
-        num_inner_workers=4
+        num_outer_workers=4
     )
