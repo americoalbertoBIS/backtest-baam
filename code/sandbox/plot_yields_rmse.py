@@ -27,6 +27,66 @@ rmse_by_execution_date = (
     .rename(columns={"Value": "RMSE"})
 )
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def plot_3d_rmse(metrics_df):
+    """
+    Create a 3D plot for RMSE values.
+
+    Args:
+        metrics_df (pd.DataFrame): DataFrame containing RMSE values with columns:
+            - "Maturity (Years)"
+            - "Horizon (Years)"
+            - "Metric"
+            - "Value"
+    """
+    # Filter the DataFrame for RMSE values
+    rmse_df = metrics_df[metrics_df["Metric"] == "RMSE"]
+    rmse_df['Value'] = pd.to_numeric(rmse_df['Value'])*100
+    # Extract unique maturities and horizons
+    maturities = rmse_df["Maturity (Years)"].unique()
+    horizons = rmse_df["Horizon (Years)"].unique()
+
+    # Create a meshgrid for maturities and horizons
+    X, Y = np.meshgrid(maturities, horizons)
+
+    # Map RMSE values to the grid
+    Z = np.zeros_like(X, dtype=float)
+    for i, horizon in enumerate(horizons):
+        for j, maturity in enumerate(maturities):
+            # Get RMSE value for the current maturity and horizon
+            value = rmse_df[
+                (rmse_df["Maturity (Years)"] == maturity) &
+                (rmse_df["Horizon (Years)"] == horizon)
+            ]["Value"].values 
+            Z[i, j] = value[0] if len(value) > 0 else np.nan  # Handle missing values
+
+    # Create a 3D plot
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the surface
+    surf = ax.plot_surface(X, Y, Z, cmap="viridis", edgecolor="k", alpha=0.8)
+
+    # Add labels and title
+    ax.set_xlabel("Maturity (Years)", fontsize=12)
+    ax.set_ylabel("Horizon (Years)", fontsize=12)
+    ax.set_zlabel("RMSE", fontsize=12)
+    ax.set_title("3D Plot of RMSE", fontsize=14)
+
+    # Add a color bar
+    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10, label="RMSE")
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()                    
+
+
+
+# Plot 3D RMSE
+plot_3d_rmse(metrics_df)
+
 # Plot RMSE by Horizon
 def plot_rmse_by_horizon(rmse_by_horizon, country):
     """

@@ -2,8 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-metrics_df_raw = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries.csv")
-metrics_df_old = metrics_df_raw.iloc[1066:,:].copy()
+metrics_df = pd.read_csv(r"C:\git\backtest-baam\data\US\metrics_timeseries_Mixed_Model.csv")
 
 import pandas as pd
 import numpy as np
@@ -231,7 +230,7 @@ def plot_var_cvar_over_execution_dates(metrics_df, maturity, horizon):
     plt.tight_layout()
     plt.show()
     
-plot_var_cvar_over_execution_dates(metrics_df, maturity=1.0, horizon=1.0)
+plot_var_cvar_over_execution_dates(metrics_df, maturity=1.0, horizon=5.0)
 
 
 rmse_by_horizon = metrics_df.groupby("Horizon (Years)").apply(

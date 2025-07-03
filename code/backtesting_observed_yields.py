@@ -128,7 +128,7 @@ def run_yield_forecasts_parallel(country, observed_yields_df, forecast_horizon=6
     # Prepare tasks for parallel processing
     for maturity in observed_yields_df.columns:
         series = observed_yields_df[maturity].dropna()
-        for execution_date in series.index[:-forecast_horizon]:
+        for execution_date in series.index:
             # Ensure at least 3 years of data before the execution date
             train_data = series[:execution_date]
             if len(train_data) < min_data_points:
@@ -169,12 +169,14 @@ def run_yield_forecasts_parallel(country, observed_yields_df, forecast_horizon=6
 
 
 if __name__ == "__main__":
-    country = 'US'
+    country = 'EA'
     # Load the yield curve data
     data_loader = DataLoaderYC(r'L:\\RMAS\\Resources\\BAAM\\OpenBAAM\\Private\\Data\\BaseDB.mat')
     _, _, _ = data_loader.load_data()
-    selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
-
+    if country == 'EA':
+        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
+    else:
+        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
     # Update model parameters for the yield curve model
     modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})
     yield_curve_model = YieldCurveModel(selected_curve_data, modelParams)
