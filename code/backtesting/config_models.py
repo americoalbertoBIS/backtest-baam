@@ -31,13 +31,18 @@ models = [
     {
         "name": "AR(1) + GDP",
         "handler": ARXModel(),
-        "params": {}
+        "params": {
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["gdp_yoy"]
+        }
     },
     {
         "name": "AR(1) + Output Gap (Direct)",
         "handler": ARXModel(),
         "params": {
-            "output_gap_method": "direct"
+            "output_gap_method": "direct",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap"]
         }
     },
     {
@@ -46,28 +51,36 @@ models = [
         "params": {
             "output_gap_method": "hp_filter",
             "lamb": 1600000,
-            "one_sided": "kalman"
+            "one_sided": "kalman",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap"]
         }
     },
     {
         "name": "AR(1) + Inflation",
         "handler": ARXModel(),
         "params": {
-            "inflation_method": "default"
+            "inflation_method": "default",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["inflation"]
         }
     },
     {
         "name": "AR(1) + Inflation (UCSV)",
         "handler": ARXModel(),
         "params": {
-            "inflation_method": "ucsv"
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["inflation"]
         }
     },
     {
         "name": "AR(1) + GDP + Inflation",
         "handler": ARXModel(),
         "params": {
-            "inflation_method": "default"
+            "inflation_method": "default",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["gdp_yoy", "inflation"]
         }
     },
     {
@@ -75,7 +88,9 @@ models = [
         "handler": ARXModel(),
         "params": {
             "output_gap_method": "gdp",
-            "inflation_method": "ucsv"
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["gdp_yoy", "inflation"]
         }
     },
     {
@@ -83,7 +98,9 @@ models = [
         "handler": ARXModel(),
         "params": {
             "output_gap_method": "direct",
-            "inflation_method": "default"
+            "inflation_method": "default",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap", "inflation"]
         }
     },
     {
@@ -91,7 +108,9 @@ models = [
         "handler": ARXModel(),
         "params": {
             "output_gap_method": "direct",
-            "inflation_method": "ucsv"
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap", "inflation"]
         }
     },
     {
@@ -101,7 +120,9 @@ models = [
             "output_gap_method": "hp_filter",
             "lamb": 1600000,
             "one_sided": "kalman",
-            "inflation_method": "default"
+            "inflation_method": "default",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap", "inflation"]
         }
     },
     {
@@ -111,7 +132,19 @@ models = [
             "output_gap_method": "hp_filter",
             "lamb": 1600000,
             "one_sided": "kalman",
-            "inflation_method": "ucsv"
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap", "inflation"]
         }
-    }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV) - MRM",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "inflation_method": "ucsv",
+            "macro_forecast": "ar_1",
+            "exogenous_variables": ["output_gap", "inflation"]
+        }
+    },
 ]

@@ -114,7 +114,7 @@ def replace_last_n_with_nan(series, n):
     """
     Replaces the last `n` non-NaN values in a series with NaN.
     """
-    non_nan_indices = series.dropna().index[-n:]
+    non_nan_indices = series.dropna(how = 'all').index[-n:]
     series.loc[non_nan_indices] = np.nan
     return series
 

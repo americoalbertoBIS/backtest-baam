@@ -10,6 +10,7 @@ os.chdir(r'C:\git\backtest-baam\code')
 
 from data_preparation.time_series_helpers import ar_extrapol, extrapolate_series
 from data_preparation.data_transformations import FREQCHG_Q2M_EXO, replace_last_n_with_nan, convert_mom_to_yoy
+from modeling.time_series_modeling import AR1Model
 
 MATLAB_MAIN_FOLDER = r'C:\git\vAppDesigner\src'
 
@@ -60,59 +61,84 @@ def convert_gdp_to_monthly(df, country, method="FREQCHG", lamb=None, one_sided=F
     # Step 4: Return the result
     return gdp_mom_extrap, gdp_monthly_extrap
 
-def output_gap(country, data, consensus_df, execution_date, method="direct"):
-    data_subset = data[data.index <= execution_date].copy()
-    data_subset[f'{country}_GDP'] = replace_last_n_with_nan(data_subset[f'{country}_GDP'], 3)
-    data_subset[f'{country}_IP'] = replace_last_n_with_nan(data_subset[f'{country}_IP'], 1)
+def output_gap(country, data, consensus_df, execution_date, method="direct", macro_forecast="consensus"):
+    """
+    Calculates the output gap for both training and testing data using the specified method.
 
-    gdp_mom_extrap, gdp_monthly_extrap = convert_gdp_to_monthly(data_subset, country=f'{country}')
+    Args:
+        country (str): Country name or code.
+        data (pd.DataFrame): Combined dataset (both train and test data).
+        consensus_df (pd.DataFrame): Consensus GDP forecasts.
+        execution_date (datetime): Execution date.
+        method (str): Method for output gap calculation ("direct", "HP", or YoY conversion).
+        macro_forecast (str): Macro forecast method ("consensus" or "ar_1"). Defaults to "consensus".
+
+    Returns:
+        tuple: Output gap (or YoY growth) for training data and test data.
+    """
+    # Split into train and test data
+    train_data = data[data.index <= execution_date].copy()
+    test_data = data[data.index > execution_date].copy()
+
+    # Step 1: Prepare data subset and extrapolated GDP growth rates
+    train_data[f'{country}_GDP'] = replace_last_n_with_nan(train_data[f'{country}_GDP'], 3)
+    train_data[f'{country}_IP'] = replace_last_n_with_nan(train_data[f'{country}_IP'], 1)
+
+    gdp_mom_extrap, gdp_monthly_extrap = convert_gdp_to_monthly(train_data, country=f'{country}')
     df_gdp_mom_extrap = pd.DataFrame(gdp_mom_extrap, columns=['gdp_mom'])
     gdp_monthly_extrap = pd.DataFrame(gdp_monthly_extrap, columns=['gdp_level'])
-    gdp_monthly_extrap.index = data_subset.index
+    gdp_monthly_extrap.index = train_data.index
 
-    forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
-    df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
-    df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
-    df_forecast_date.set_index('forecasted_month', inplace=True)
-    
+    # Step 2: Generate GDP growth forecasts
+    if macro_forecast == "ar_1":
+        # Fit AR(1) model on extrapolated GDP MoM growth rates
+        ar1_model_gdp = AR1Model()
+        fitted_gdp_model = ar1_model_gdp.fit(df_gdp_mom_extrap, target_col='gdp_mom')
+        gdp_growth_forecasts = ar1_model_gdp.forecast(
+            model=fitted_gdp_model,
+            steps=60,  # Forecast for the test data horizon
+            train_data=df_gdp_mom_extrap,
+            target_col='gdp_mom'
+        )
+        # Assign AR(1)-based forecasts to the test data
+        test_data['gdp_mom_with_forecast'] = gdp_growth_forecasts
+    else:
+        # Use consensus forecasts
+        forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
+        df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
+        df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
+        df_forecast_date.set_index('forecasted_month', inplace=True)
+        test_data['gdp_mom_with_forecast'] = df_forecast_date['monthly_forecast'] / 100
+
+    # Combine train and test data with forecasts
+    df_gdp_mom_extrap['gdp_mom_with_forecast'] = df_gdp_mom_extrap['gdp_mom']
+    combined_data = pd.concat([df_gdp_mom_extrap, test_data[['gdp_mom_with_forecast']]], axis=0)
+
+    # Step 3: Calculate output gap or YoY growth
     if method == "direct":
-        df_gdp_with_lags_and_consensus = pd.concat([df_gdp_mom_extrap, df_forecast_date['monthly_forecast'] / 100], axis=1).dropna(how='all')
-        df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_mom'].fillna(df_gdp_with_lags_and_consensus['monthly_forecast'])
-
         para = {
             'FDOGInitialValue': 0,
             'FDOGalpha': 0.02,
             'FDOGbeta': 0.000002,
-            'GDPGrowth': df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'].dropna().values
+            'GDPGrowth': combined_data['gdp_mom_with_forecast'].dropna().values
         }
         OGest, _, _, _, _ = OUTPUTGAPdirect(para)
-        output_gap_full = pd.Series(OGest, index=df_gdp_with_lags_and_consensus.index[:len(OGest)])
+        output_gap_full = pd.Series(OGest, index=combined_data['gdp_mom_with_forecast'].dropna().index[:len(OGest)])
+        return output_gap_full.loc[df_gdp_mom_extrap.dropna().index], output_gap_full.loc[test_data.index]
 
-        return output_gap_full, df_gdp_with_lags_and_consensus['gdp_mom_with_consensus']
-        
     elif method == "hp_filter":
-        df_forecast_date['growth_factor'] = 1 + (df_forecast_date['monthly_forecast'] / 100)
+        combined_data['growth_factor'] = 1 + (combined_data['gdp_mom_with_forecast'] / 100)
         last_observed_gdp = gdp_monthly_extrap.iloc[-1]
-        # Apply cumulative product to reconstruct GDP levels
-        df_forecast_date['reconstructed_gdp'] = last_observed_gdp.values * df_forecast_date['growth_factor'].cumprod()
-        # Combine observed GDP levels and reconstructed levels
-        df_gdp_with_lags_and_consensus = pd.concat([gdp_monthly_extrap, df_forecast_date['reconstructed_gdp']], axis=1)
-        df_gdp_with_lags_and_consensus['gdp_level_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_level'].fillna(
-            df_gdp_with_lags_and_consensus['reconstructed_gdp']
-        )
+        combined_data['reconstructed_gdp'] = last_observed_gdp.values * combined_data['growth_factor'].cumprod()
+        gdpTrend = me.hp_filter(combined_data['reconstructed_gdp'].dropna(), one_sided="kalman", lambda_values=1600000)
+        gdpCycle = np.log(combined_data['reconstructed_gdp'].dropna()) - np.log(gdpTrend)
+        output_gap_full = pd.Series(gdpCycle, index=combined_data.index)
+        return output_gap_full.loc[train_data.index], output_gap_full.loc[test_data.index]
 
-        gdpTrend = me.hp_filter(df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna(), one_sided="kalman", lambda_values=1600000)
-        gdpCycle = pd.DataFrame(np.log(df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna()) - np.log(gdpTrend)) * 100
-        gdpCycle.columns = ['ygap_HP_RT']
-        output_gap_full = gdpCycle['ygap_HP_RT']
-    
-        return output_gap_full, df_gdp_with_lags_and_consensus['gdp_level_with_consensus'].dropna()
-    
     else:
-        df_gdp_with_lags_and_consensus = pd.concat([df_gdp_mom_extrap, df_forecast_date['monthly_forecast'] / 100], axis=1).dropna(how='all')
-        df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'] = df_gdp_with_lags_and_consensus['gdp_mom'].fillna(df_gdp_with_lags_and_consensus['monthly_forecast'])
-        gdp_yoy = convert_mom_to_yoy(df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'], 'gdp_yoy')
-        gdp_yoy.index = df_gdp_with_lags_and_consensus['gdp_mom_with_consensus'].index
+        # Convert MoM to YoY growth rates
+        gdp_yoy = convert_mom_to_yoy(combined_data['gdp_mom_with_forecast'], 'gdp_yoy')
+        gdp_yoy.index = combined_data['gdp_mom_with_forecast'].index
         return None, gdp_yoy.dropna()
         
 def OUTPUTGAPdirect(para):
@@ -207,49 +233,72 @@ def inflation_ucsv_matlab(series):
 
     return ucsv_baam
 
-def inflation_expectations(country, data, consensus_df, execution_date, method="default"):
+def inflation_expectations(country, data, consensus_df, execution_date, method="default", macro_forecast="consensus"):
     """
-    Calculates inflation expectations using the specified method.
+    Calculates inflation expectations for both training and testing data using the specified method.
 
     Args:
-        data (pd.DataFrame): Input data containing CPI series.
+        country (str): Country name or code.
+        data (pd.DataFrame): Combined dataset (both train and test data).
         consensus_df (pd.DataFrame): Consensus forecast data.
         execution_date (datetime): Execution date for the calculation.
         method (str): Method for calculating inflation expectations ("default" or "ucsv").
+        macro_forecast (str): Macro forecast method ("consensus" or "ar_1"). Defaults to "consensus".
 
     Returns:
-        pd.Series: Year-on-year inflation expectations.
+        tuple: Inflation expectations for training data and test data.
     """
+    # Split into train and test data
+    train_data = data[data.index <= execution_date].copy()
+    test_data = data[data.index > execution_date].copy()
+
     # Step 1: Prepare CPI data
-    data_subset = pd.DataFrame(data[data.index <= execution_date].copy())
-    data_subset = replace_last_n_with_nan(data_subset, 1)
-    cpi_mom_infl = data_subset.pct_change(fill_method=None).iloc[1:] * 100
+    train_data = replace_last_n_with_nan(train_data, 1)  # Replace NaNs for the last observation
+    cpi_mom_train = train_data.pct_change(fill_method=None).iloc[1:] * 100  # MoM CPI growth rates
 
-    # Step 2: Integrate Consensus Forecast
-    forecast_date = consensus_df[consensus_df['forecast_date'] <= execution_date]['forecast_date'].max()
-    
-    df_forecast_date = consensus_df[consensus_df['forecast_date'] == forecast_date]
-    df_forecast_date = df_forecast_date[['forecasted_month', 'monthly_forecast']]
-    df_forecast_date.set_index('forecasted_month', inplace=True)
-    df_forecast_date.index = pd.to_datetime(df_forecast_date.index)
+    # Step 2: Generate inflation forecasts
+    if macro_forecast == "ar_1":
+        # Fit AR(1) model on CPI MoM growth rates
+        ar1_model_inflation = AR1Model()
+        fitted_inflation_model = ar1_model_inflation.fit(pd.DataFrame(cpi_mom_train).dropna(), target_col=f"{country}_CPI")
+        inflation_growth_forecasts = ar1_model_inflation.forecast(
+            model=fitted_inflation_model,
+            steps=60,  # Forecast for the test data horizon
+            train_data=pd.DataFrame(cpi_mom_train).dropna(),
+            target_col=f"{country}_CPI"
+        )
+        forecast_dates = pd.date_range(start=test_data.first_valid_index(), periods=60, freq="MS")
+        df_forecast_date = pd.DataFrame(inflation_growth_forecasts,
+                                   index=forecast_dates, 
+                                   columns = ['monthly_forecast'])
 
-    # Step 3: Calculate Inflation Expectations
+    elif macro_forecast == "consensus":
+        # Use consensus forecasts
+        forecast_date = consensus_df[consensus_df["forecast_date"] <= execution_date]["forecast_date"].max()
+        df_forecast_date = consensus_df[consensus_df["forecast_date"] == forecast_date]
+        df_forecast_date = df_forecast_date[["forecasted_month", "monthly_forecast"]]
+        df_forecast_date.set_index("forecasted_month", inplace=True)
+        df_forecast_date.index = pd.to_datetime(df_forecast_date.index)
+        #test_data["cpi_mom_with_forecast"] = df_forecast_date["monthly_forecast"]
+
+    # Combine train and test data with forecasts
+    # combined_data = pd.concat([cpi_mom_train, test_data["cpi_mom_with_forecast"]], axis=0)
+
+    # Step 3: Calculate inflation expectations
     if method == "ucsv":
-        # Use UCSV method
-        ucsv_fit = inflation_ucsv_matlab(cpi_mom_infl)
-        temp = pd.DataFrame()
-        temp['ucsv_o'] = ucsv_fit.flatten()
-        temp.index = cpi_mom_infl.index
-        temp = pd.concat([df_forecast_date['monthly_forecast'], temp], axis=1)
-        temp['cpi_mom_with_consensus'] = temp['ucsv_o'].fillna(temp['monthly_forecast'])
+        # Use UCSV method to calculate inflation expectations independently
+        ucsv_fit = inflation_ucsv_matlab(pd.DataFrame(cpi_mom_train))
+        df_ucsv_fit = pd.DataFrame(ucsv_fit.flatten(), index = cpi_mom_train.index, columns = ['ucsv'])
+        # Attach consensus forecasts to fill missing values after UCSV calculations
+        temp = pd.concat([df_forecast_date['monthly_forecast'], df_ucsv_fit], axis = 1)
+        inflation_expectations_full = pd.DataFrame(temp['ucsv'].fillna(temp['monthly_forecast']))
+        inflation_expectations_full.columns = ['cpi_mom_with_forecast']
     else:
         # Default method
-        temp = pd.concat([cpi_mom_infl, df_forecast_date['monthly_forecast']], axis=1).dropna(how='all')
-        temp['cpi_mom_with_consensus'] = temp[f'{country}_CPI'].fillna(temp['monthly_forecast'])
-
+        temp = pd.concat([cpi_mom_train, df_forecast_date['monthly_forecast']], axis=1).dropna(how='all')
+        inflation_expectations_full['cpi_mom_with_forecast'] = temp[f'{country}_CPI'].fillna(temp['monthly_forecast'])
+        
     # Step 4: Convert to YoY Inflation
-    inflation_yoy = convert_mom_to_yoy(temp['cpi_mom_with_consensus'], 'ucsv_baam')
-    #inflation_yoy = convert_mom_to_yoy(temp['cpi_mom_with_consensus'].values, col_name='YoY_inflation')
-    inflation_yoy.index = temp['cpi_mom_with_consensus'].index
-
-    return inflation_yoy
+    inflation_yoy = convert_mom_to_yoy(inflation_expectations_full['cpi_mom_with_forecast'], "YoY_inflation")
+    
+    return inflation_yoy[inflation_yoy.index>=train_data.first_valid_index()], inflation_yoy.loc[test_data.index]

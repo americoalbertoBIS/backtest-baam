@@ -69,11 +69,48 @@ class AR1Model(BaseModel):
         super().__init__("AR(1)")
 
     def fit(self, train_data, target_col, **kwargs):
+        """
+        Fit an AR(1) model to the training data.
+
+        Args:
+            train_data (pd.DataFrame): Training dataset.
+            target_col (str): Name of the target column.
+
+        Returns:
+            Fitted AR(1) model.
+        """
         lagged_target = train_data[target_col].shift(1).dropna()
         X = sm.add_constant(lagged_target)
         y = train_data[target_col].loc[X.index]
         model = sm.OLS(y, X).fit()
         return model
+
+    def forecast(self, model, steps, train_data, target_col):
+        """
+        Generate iterative AR(1) forecasts.
+
+        Args:
+            model: Fitted AR(1) model.
+            steps (int): Number of steps to forecast.
+            train_data (pd.DataFrame): Training dataset.
+            target_col (str): Name of the target column.
+
+        Returns:
+            list: Iteratively forecasted values.
+        """
+        # Automatically get the last observed value from the training data
+        last_value = train_data[target_col].iloc[-1]
+        
+        forecast_values = []
+        current_value = last_value
+
+        for _ in range(steps):
+            # Forecast using the AR(1) equation: y_t = β0 + β1 * y_t-1
+            forecast = model.params[0] + model.params[1] * current_value
+            forecast_values.append(forecast)
+            current_value = forecast  # Update for the next step
+
+        return forecast_values
     
 class ARXModel(BaseModel):
     def __init__(self):
