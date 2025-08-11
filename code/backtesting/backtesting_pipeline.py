@@ -45,19 +45,21 @@ def prepare_train_test_data(
     # Step 1: Split the data into train and test sets
     train_data = df.loc[:execution_date].copy()
     future_dates = pd.date_range(
-        start=df.index[-1] + pd.DateOffset(months=1),
+        start=train_data.index[-1] + pd.DateOffset(months=1),
         periods=max(horizons),
         freq="MS",
     )
     extended_test_data = pd.DataFrame(index=future_dates)
-    test_data = pd.concat([df.loc[execution_date:], extended_test_data])
+    test_data = pd.concat([df.loc[execution_date + pd.DateOffset(months=1):], extended_test_data], axis = 1)
+    combined_data = pd.concat([train_data, extended_test_data], axis=0)
 
     # Step 2: Add Output Gap
     if "output_gap" in exogenous_variables:
+        #print("Calculate output gap")
         # Train set: Calculate output gap
         output_gap_train, output_gap_test = output_gap(
             country=country,
-            data=df,
+            data=combined_data,
             consensus_df=consensus_df_gdp,
             execution_date=execution_date,
             method=output_gap_method,
@@ -73,7 +75,7 @@ def prepare_train_test_data(
         # Train set: Calculate inflation expectations
         train_inflation, test_inflation = inflation_expectations(
             country=country,
-            data=df[f"{country}_CPI"],
+            data=combined_data[f"{country}_CPI"],
             consensus_df=consensus_df_inf,  
             execution_date=execution_date,
             method=inflation_method,
@@ -182,7 +184,7 @@ def parallel_generate_simulations(
     simulations = []
 
     # Use ThreadPoolExecutor to parallelize simulations
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
             executor.submit(
                 process_single_simulation,
@@ -253,7 +255,7 @@ def process_single_simulation(
 
     return simulation_results
 
-def extract_residuals(model, execution_date, train_data):
+def extract_residuals(model, execution_date):
     """
     Extracts residuals from the model and stores them in a long format.
 
@@ -266,11 +268,12 @@ def extract_residuals(model, execution_date, train_data):
         pd.DataFrame: DataFrame containing residuals in long format.
     """
     residuals = model.resid  # Model residuals (in-sample)
+
     #residuals_list = []
     residuals_df = pd.DataFrame({
         "execution_date": execution_date,
-        "date": train_data.index,  # Index of the training data
-        "residual": residuals
+        "date": residuals.index,  # Index of the training data
+        "residual": residuals.values
     }).reset_index(drop=True)
 
     return residuals_df
@@ -353,60 +356,68 @@ def process_execution_date_parallel(
     Returns:
         tuple: Deterministic results (list) and simulations (list of dicts).
     """
+    logging.info(f"Process execution date: {str(execution_date)}")
+    # Provide a default empty list for exogenous variables
+    exogenous_variables = model_params.get("exogenous_variables", [])
+
     # Prepare training and testing datasets
+    logging.info("Prepare train and test data")
+    #print("Prepare train and test data")
     train_data, test_data = prepare_train_test_data(
         country=country,
         df=df,
         execution_date=execution_date,
         consensus_df_gdp=df_consensus_gdp,
         consensus_df_inf=df_consensus_inf,
-        exogenous_variables=model_params['exogenous_variables'],
+        exogenous_variables=exogenous_variables,
         output_gap_method=model_params.get("output_gap_method"),
         inflation_method=model_params.get("inflation_method"),
         macro_forecast=model_params.get("macro_forecast"),
-        horizons=horizons,
-        model_name=model_name
+        horizons=horizons
+        #model_name=model_name
     )
-
+    
     # Fit the model
+    logging.info("Fit the model")
+    #print("Fit the model")
     model = model_handler.fit(
         train_data=train_data,
         target_col=target_col,
-        exogenous_vars=model_params['exogenous_variables']
+        exogenous_vars=exogenous_variables
     )
-
+    
     # Extract residuals (in-sample, based on train_data)
+    logging.info("Extract residuals")
     residuals = extract_residuals(
         model=model,
-        execution_date=execution_date,
-        train_data=train_data
+        execution_date=execution_date
     )
     
     # Extract model metrics
+    logging.info("Extract in sample metrics")
     insample_metrics = extract_insample_metrics(
         model=model,
         execution_date=execution_date,
         model_name=model_name,
-        target_col=target_col,
-        horizons=horizons,
-        model_params=model_params
+        target_col=target_col
     )
     
     lagged_beta1 = train_data[target_col].iloc[-1]
     
     # Generate deterministic forecasts
+    logging.info("Forecast values")
     results = forecast_values(
         model=model,
-        model_name=model_name,
         test_data=test_data,
         lagged_beta1=lagged_beta1,
         horizons=horizons,
-        exogenous_variables=model_params['exogenous_variables'],
+        exogenous_variables=exogenous_variables,
         execution_date=execution_date,
         df=df,
         target_col=target_col
     )
 
+    logging.info("Generate simulations")
     # Generate simulations in parallel
     simulations = parallel_generate_simulations(
         model=model,
@@ -414,7 +425,7 @@ def process_execution_date_parallel(
         test_data=test_data,
         lagged_beta1=lagged_beta1,
         horizons=horizons,
-        exogenous_variables=model_params['exogenous_variables'],
+        exogenous_variables=exogenous_variables,
         execution_date=execution_date,
         df=df,
         target_col=target_col,
@@ -459,7 +470,7 @@ def generate_execution_dates(data, consensus_df=None, execution_date_column="for
         # Filter execution dates to ensure sufficient training data
         execution_dates = [date for date in execution_dates if date >= data.index[min_start_index]]
 
-    elif macro_forecast == "ar_1":
+    elif macro_forecast == "ar_1" or macro_forecast == None:
         # Generate execution dates starting after the first valid index and minimum training period
         execution_dates = data.loc[first_valid_index:].index[min_start_index:]
 
@@ -470,7 +481,7 @@ def generate_execution_dates(data, consensus_df=None, execution_date_column="for
 
 def expanding_window_backtest_double_parallel(
     country, df, target_col, horizons, model_name, model_handler, model_params,
-    df_consensus_gdp, df_consensus_inf, min_years=3, num_simulations=1000, max_workers=os.cpu_count()//2
+    df_consensus_gdp, df_consensus_inf, min_years=3, num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Performs an expanding window backtest with double parallelization.
@@ -500,7 +511,7 @@ def expanding_window_backtest_double_parallel(
                         data=df,
                         consensus_df=df_consensus_gdp if model_params.get("macro_forecast") == "consensus" else None,
                         execution_date_column="forecast_date" if model_params.get("macro_forecast") == "consensus" else None,
-                        min_years=3,
+                        min_years=min_years,
                         macro_forecast=model_params.get("macro_forecast")
                         )
     
@@ -532,12 +543,12 @@ def expanding_window_backtest_double_parallel(
                 insample_residuals.append(residuals)
                 insample_metrics.extend(metrics)
             except Exception as e:
-                print(f"Error processing execution date {futures[future]}: {e}")
+                logging.info(f"Error processing execution date {futures[future]}: {e}")
 
     return pd.DataFrame(results), pd.DataFrame(all_simulations), pd.concat(insample_residuals), pd.DataFrame(insample_metrics)
 
 def run_backtest_parallel_with_mlflow(
-    country, df, horizons, target_col, model_name, model_handler, model_params, save_dir="results", num_simulations=1000, max_workers=16
+    country, df, horizons, target_col, model_name, model_handler, model_params, save_dir="results", num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Runs a backtest with MLflow tracking and logs the results.
@@ -605,9 +616,11 @@ def run_backtest_parallel_with_mlflow(
                 for horizon in horizons
             }
 
+            logging.info("Log results in MLFLOW")
             # Step 7: Log backtest results
+            cleaned_model_name = clean_model_name(model_name)
             log_backtest_results(
-                df, target_col, model_name, backtest_type, horizons,
+                country, df, target_col, cleaned_model_name, backtest_type, horizons,
                 predictions, actuals, df_predictions=df_predictions, save_dir=save_dir
             )
 
@@ -616,7 +629,7 @@ def run_backtest_parallel_with_mlflow(
 
     except Exception as e:
         logging.error(f"An error occurred during backtesting for model '{model_name}' on country '{country}': {e}")
-        return None, None
+        return None, None, None, None
 
 def calculate_out_of_sample_metrics(df_predictions):
     """
@@ -632,6 +645,9 @@ def calculate_out_of_sample_metrics(df_predictions):
     if not {"Horizon", "Actual", "Prediction", "ExecutionDate", "ForecastDate"}.issubset(df_predictions.columns):
         raise ValueError("df_predictions must contain 'Horizon', 'Actual', 'Prediction', 'ExecutionDate', and 'ForecastDate' columns.")
 
+    # Drop rows with NaN in Actual or Prediction
+    df_predictions = df_predictions.dropna(subset=["Actual", "Prediction"])
+
     # Calculate residuals and squared errors
     df_predictions["Residual"] = df_predictions["Actual"] - df_predictions["Prediction"]
     df_predictions["SquaredError"] = df_predictions["Residual"] ** 2
@@ -642,29 +658,31 @@ def calculate_out_of_sample_metrics(df_predictions):
         df_predictions.groupby("Horizon")
         .apply(lambda group: pd.Series({
             "mse": group["SquaredError"].mean(),
-            "r_squared": r2_score(group["Actual"], group["Prediction"]) if len(group) > 0 else np.nan,
+            "r_squared": r2_score(group["Actual"], group["Prediction"]),
             "rmse": np.sqrt(group["SquaredError"].mean())
         }))
         .reset_index()
     )
 
     # RMSE by execution date
-    rmse_by_execution_date = (
-        df_predictions.groupby("ExecutionDate")["SquaredError"]
-        .mean()
-        .apply(np.sqrt)
+    metrics_by_execution_date = (
+        df_predictions.groupby("ExecutionDate")
+        .apply(lambda group: pd.Series({
+            "mse": group["SquaredError"].mean(),
+            "r_squared": r2_score(group["Actual"], group["Prediction"]),
+            "rmse": np.sqrt(group["SquaredError"].mean())
+        }))
         .reset_index()
-        .rename(columns={"SquaredError": "RMSE"})
     )
 
     return {
         "by_horizon": metrics_by_horizon,
-        "by_execution_date": rmse_by_execution_date,
+        "by_execution_date": metrics_by_execution_date,
         "by_row": df_predictions[["ExecutionDate", "ForecastDate", "Horizon", "RMSE_Row"]]  # RMSE for each row
     }
     
 def run_all_backtests_parallel(
-    country, df, horizons, target_col, save_dir="results", model_config=None, num_simulations=1000, max_workers=16
+    country, df, horizons, target_col, save_dir="results", model_config=None, num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Runs backtests for a single model and combines results for a specific target column.
@@ -693,8 +711,11 @@ def run_all_backtests_parallel(
     country_save_dir = os.path.join(save_dir, country)
     os.makedirs(country_save_dir, exist_ok=True)  # Ensure the folder exists
 
+    factors_dir = os.path.join(country_save_dir, "factors", cleaned_model_name, target_col)
+    os.makedirs(factors_dir, exist_ok=True)
+
     try:
-        print(f"Running backtest for model: {model_name} and target column: {target_col}...")
+        logging.info(f"Running backtest for model: {model_name} and target column: {target_col}...")
 
         # Run backtest for the current model and target column
         df_predictions, df_simulations, df_insample_residuals, df_insample_metrics = run_backtest_parallel_with_mlflow(
@@ -712,23 +733,42 @@ def run_all_backtests_parallel(
         
         # Save results for the model and target column
         if df_predictions is not None and df_simulations is not None:
-            # Save deterministic forecasts
-            predictions_file = os.path.join(country_save_dir, f"{target_col}_forecasts_{cleaned_model_name}.csv")
+            predictions_file = os.path.join(factors_dir, f"forecasts.csv")
             df_predictions.to_csv(predictions_file, index=False)
 
+            logging.info("Calculate out of sample metrics")
+            outofsample_metrics = calculate_out_of_sample_metrics(df_predictions)
+
+            logging.info("Save results")
+            # Save out of sample metrics metrics to CSV
+            metrics_by_horizon_file = os.path.join(factors_dir, f"outofsample_metrics_by_horizon.csv")
+            outofsample_metrics["by_horizon"].to_csv(metrics_by_horizon_file, index=False)
+
+            metrics_by_execution_date_file = os.path.join(factors_dir, f"outofsample_metrics_by_execution_date.csv")
+            outofsample_metrics["by_execution_date"].to_csv(metrics_by_execution_date_file, index=False)
+
+            metrics_by_row_file = os.path.join(factors_dir, f"outofsample_metrics_by_row.csv")
+            outofsample_metrics["by_row"].to_csv(metrics_by_row_file, index=False)
+
+            logging.info(f"Out-of-sample metrics saved for model: {cleaned_model_name} and target column: {target_col}")
+
+            # Save deterministic forecasts
+            #predictions_file = os.path.join(factors_dir, f"forecasts.csv")
+            #df_predictions.to_csv(predictions_file, index=False)
+
             # Save simulations
-            simulations_file = os.path.join(country_save_dir, f"{target_col}_simulations_{cleaned_model_name}.parquet")
+            simulations_file = os.path.join(factors_dir, f"simulations.parquet")
             df_simulations.to_parquet(simulations_file, index=False)
             
             # Save residuals
-            residuals_file = os.path.join(country_save_dir, f"{target_col}_residuals_{cleaned_model_name}.csv")
-            df_insample_residuals.to_parquet(residuals_file, index=False)
+            residuals_file = os.path.join(factors_dir, f"residuals.csv")
+            df_insample_residuals.to_csv(residuals_file, index=False)
 
-            # Save residuals
-            insample_metrics_file = os.path.join(country_save_dir, f"{target_col}_insampleMetrics_{cleaned_model_name}.csv")
-            df_insample_metrics.to_parquet(insample_metrics_file, index=False)            
+            # Save in sample metrics
+            insample_metrics_file = os.path.join(factors_dir, f"insample_metrics.csv")
+            df_insample_metrics.to_csv(insample_metrics_file, index=False)            
             
-            print(f"Results saved for model: {model_name} and target column: {target_col}")
+            logging.info(f"Results saved for model: {cleaned_model_name} and target column: {target_col}")
 
     except Exception as e:
-        print(f"Error occurred while running backtest for model {model_name} and target column {target_col}: {e}")
+        logging.info(f"Error occurred while running backtest for model {cleaned_model_name} and target column {target_col}: {e}")

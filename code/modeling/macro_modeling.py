@@ -124,7 +124,7 @@ def output_gap(country, data, consensus_df, execution_date, method="direct", mac
         }
         OGest, _, _, _, _ = OUTPUTGAPdirect(para)
         output_gap_full = pd.Series(OGest, index=combined_data['gdp_mom_with_forecast'].dropna().index[:len(OGest)])
-        return output_gap_full.loc[df_gdp_mom_extrap.dropna().index], output_gap_full.loc[test_data.index]
+        return output_gap_full.loc[:execution_date], output_gap_full.loc[execution_date + pd.DateOffset(months=1):]
 
     elif method == "hp_filter":
         combined_data['growth_factor'] = 1 + (combined_data['gdp_mom_with_forecast'] / 100)
@@ -133,7 +133,7 @@ def output_gap(country, data, consensus_df, execution_date, method="direct", mac
         gdpTrend = me.hp_filter(combined_data['reconstructed_gdp'].dropna(), one_sided="kalman", lambda_values=1600000)
         gdpCycle = np.log(combined_data['reconstructed_gdp'].dropna()) - np.log(gdpTrend)
         output_gap_full = pd.Series(gdpCycle, index=combined_data.index)
-        return output_gap_full.loc[train_data.index], output_gap_full.loc[test_data.index]
+        return output_gap_full.loc[:execution_date], output_gap_full.loc[execution_date + pd.DateOffset(months=1):]
 
     else:
         # Convert MoM to YoY growth rates
@@ -249,8 +249,8 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
         tuple: Inflation expectations for training data and test data.
     """
     # Split into train and test data
-    train_data = data[data.index <= execution_date].copy()
-    test_data = data[data.index > execution_date].copy()
+    train_data = pd.DataFrame(data[data.index <= execution_date].copy())
+    test_data = pd.DataFrame(data[data.index > execution_date].copy())
 
     # Step 1: Prepare CPI data
     train_data = replace_last_n_with_nan(train_data, 1)  # Replace NaNs for the last observation
@@ -267,10 +267,8 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
             train_data=pd.DataFrame(cpi_mom_train).dropna(),
             target_col=f"{country}_CPI"
         )
-        forecast_dates = pd.date_range(start=test_data.first_valid_index(), periods=60, freq="MS")
-        df_forecast_date = pd.DataFrame(inflation_growth_forecasts,
-                                   index=forecast_dates, 
-                                   columns = ['monthly_forecast'])
+        test_data['monthly_forecast'] = inflation_growth_forecasts
+        df_forecast_date = pd.DataFrame(test_data['monthly_forecast'])
 
     elif macro_forecast == "consensus":
         # Use consensus forecasts
@@ -301,4 +299,4 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
     # Step 4: Convert to YoY Inflation
     inflation_yoy = convert_mom_to_yoy(inflation_expectations_full['cpi_mom_with_forecast'], "YoY_inflation")
     
-    return inflation_yoy[inflation_yoy.index>=train_data.first_valid_index()], inflation_yoy.loc[test_data.index]
+    return inflation_yoy.loc[:execution_date], inflation_yoy.loc[execution_date + pd.DateOffset(months=1):]
