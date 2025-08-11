@@ -29,6 +29,70 @@ models = [
         "params": {}
     },
     {
+        "name": "AR(1) + Output Gap (Direct)",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap"]
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) - MRM",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "macro_forecast": "ar_1",
+            "exogenous_variables": ["output_gap"]
+        }
+    },
+    {
+        "name": "AR(1) + Inflation (UCSV)",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["inflation"]
+        }
+    },
+    {
+        "name": "AR(1) + Inflation (UCSV) - MRM",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "ucsv",
+            "macro_forecast": "ar_1",
+            "exogenous_variables": ["inflation"]
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV)",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["output_gap", "inflation"]
+        }
+    },
+    {
+        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV) - MRM",
+        "handler": ARXModel(),
+        "params": {
+            "output_gap_method": "direct",
+            "inflation_method": "ucsv",
+            "macro_forecast": "ar_1",
+            "exogenous_variables": ["output_gap", "inflation"]
+        }
+    },
+]
+
+all_models = [
+    {
+        "name": "AR(1)",
+        "handler": AR1Model(),
+        "params": {}
+    },
+    {
         "name": "AR(1) + GDP",
         "handler": ARXModel(),
         "params": {
@@ -134,16 +198,6 @@ models = [
             "one_sided": "kalman",
             "inflation_method": "ucsv",
             "macro_forecast": "consensus",
-            "exogenous_variables": ["output_gap", "inflation"]
-        }
-    },
-    {
-        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV) - MRM",
-        "handler": ARXModel(),
-        "params": {
-            "output_gap_method": "direct",
-            "inflation_method": "ucsv",
-            "macro_forecast": "ar_1",
             "exogenous_variables": ["output_gap", "inflation"]
         }
     },

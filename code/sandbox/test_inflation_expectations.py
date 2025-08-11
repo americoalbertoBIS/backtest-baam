@@ -46,6 +46,51 @@ from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
 consensus_forecast = ConsensusForecast(QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH)
 df_consensus_inf, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} INF")
 
+def generate_execution_dates(data, consensus_df=None, execution_date_column="forecast_date", min_years=3, macro_forecast="consensus"):
+    """
+    Generates a list of valid execution dates for backtesting.
+
+    Args:
+        data (pd.DataFrame): Input dataset with a DateTime index.
+        consensus_df (pd.DataFrame, optional): Consensus dataset with forecast dates.
+        execution_date_column (str): Column in the consensus dataset that specifies execution dates.
+        min_years (int): Minimum number of years of historical data required for training.
+        macro_forecast (str): Macro forecast method ("consensus" or "ar_1").
+
+    Returns:
+        list: List of valid execution dates.
+    """
+    # Ensure the dataset has enough historical data
+    min_start_index = min_years * 12  # Convert years to months
+    first_valid_index = data.dropna().first_valid_index()  # First valid index after dropping NaNs
+
+    if first_valid_index is None:
+        raise ValueError("The dataset contains no valid data after dropping missing values.")
+
+    # Ensure sufficient historical data is available for training
+    if len(data.loc[first_valid_index:]) < min_start_index:
+        raise ValueError(f"Not enough data. At least {min_years} years of valid data are required.")
+
+    # Handle execution dates based on macro_forecast method
+    if macro_forecast == "consensus":
+        if consensus_df is None or execution_date_column not in consensus_df.columns:
+            raise ValueError(f"Consensus dataset must be provided with a '{execution_date_column}' column for consensus forecasts.")
+
+        # Use the forecast dates from the consensus dataset
+        execution_dates = consensus_df[execution_date_column].sort_values().unique()
+
+        # Filter execution dates to ensure sufficient training data
+        execution_dates = [date for date in execution_dates if date >= data.index[min_start_index]]
+
+    elif macro_forecast == "ar_1":
+        # Generate execution dates starting after the first valid index and minimum training period
+        execution_dates = data.loc[first_valid_index:].index[min_start_index:]
+
+    else:
+        raise ValueError(f"Unknown macro_forecast method: {macro_forecast}")
+
+    return execution_dates
+
 
 def inflation_ucsv_matlab(series):
 
@@ -86,8 +131,8 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
         tuple: Inflation expectations for training data and test data.
     """
     # Split into train and test data
-    train_data = data[data.index <= execution_date].copy()
-    test_data = data[data.index > execution_date].copy()
+    train_data = pd.DataFrame(data[data.index <= execution_date].copy())
+    test_data = pd.DataFrame(data[data.index > execution_date].copy())
 
     # Step 1: Prepare CPI data
     train_data = replace_last_n_with_nan(train_data, 1)  # Replace NaNs for the last observation
@@ -104,10 +149,12 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
             train_data=pd.DataFrame(cpi_mom_train).dropna(),
             target_col=f"{country}_CPI"
         )
-        forecast_dates = pd.date_range(start=test_data.first_valid_index(), periods=60, freq="MS")
-        df_forecast_date = pd.DataFrame(inflation_growth_forecasts,
-                                   index=forecast_dates, 
-                                   columns = ['monthly_forecast'])
+        test_data['monthly_forecast'] = inflation_growth_forecasts
+        df_forecast_date = pd.DataFrame(test_data['monthly_forecast'])
+        #forecast_dates = pd.date_range(start=execution_date + pd.DateOffset(months=1), periods=60, freq="MS")
+        #df_forecast_date = pd.DataFrame(inflation_growth_forecasts,
+        #                           index=forecast_dates, 
+        #                           columns = ['monthly_forecast'])
 
     elif macro_forecast == "consensus":
         # Use consensus forecasts
@@ -137,19 +184,39 @@ def inflation_expectations(country, data, consensus_df, execution_date, method="
         
     # Step 4: Convert to YoY Inflation
     inflation_yoy = convert_mom_to_yoy(inflation_expectations_full['cpi_mom_with_forecast'], "YoY_inflation")
-    return inflation_yoy[inflation_yoy.index>=train_data.first_valid_index()], inflation_yoy.loc[test_data.index]
+    return inflation_yoy[inflation_yoy.index>=train_data.first_valid_index()], inflation_yoy[inflation_yoy.index>=test_data.index[0]]
+
+execution_dates = generate_execution_dates(
+    data=df_combined,
+    consensus_df=df_consensus_inf,
+    execution_date_column=None,
+    min_years=3,
+    macro_forecast="ar_1"
+)
+
+execution_date=execution_dates[0]
+
+df = df_combined.copy()
+train_data_exp = df.loc[:execution_date].copy()  # Historical data up to the execution date
+future_dates = pd.date_range(
+    start=train_data_exp.index[-1] + pd.DateOffset(months=1),
+    periods=max(horizons),
+    freq="MS",
+)
+test_data_exp = pd.DataFrame(index=future_dates)  # Future forecast horizons
+combined_data = pd.concat([train_data_exp, test_data_exp], axis=0)
 
 train_inflation, test_inflation = inflation_expectations(
     country="US",
-    data=df_combined["US_CPI"],
+    data=combined_data["US_CPI"],
     consensus_df=None,  # No consensus data needed for AR(1)
-    execution_date=pd.Timestamp("2023-01-01"),
+    execution_date=execution_dates[0],
     method="ucsv",
     macro_forecast="ar_1"
 )
-inflation_yoy_train = inflation_yoy.copy()
-inflation_yoy_test = inflation_yoy.reindex(test_data.index)
-train_data[inflation_col] = inflation_yoy_train
-test_data[inflation_col] = inflation_yoy_test
+
+inflation_col = 'YoY_inflation'
+train_data_exp[inflation_col] = train_inflation
+test_data_exp[inflation_col] = test_inflation
         
         

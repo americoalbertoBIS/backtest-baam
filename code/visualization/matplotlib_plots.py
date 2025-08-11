@@ -11,7 +11,8 @@ def plot_forecasts_with_actuals(target_col, df_predictions, realized_beta, model
         else:
             plt.plot(subset['ForecastDate'], subset['Prediction'], color='gray', alpha=0.2)
 
-    plt.plot(realized_beta[(realized_beta.index > '1990') & (realized_beta.index < '2026')], color='black', linewidth=2, label="Actual Beta 1")
+    #plt.plot(realized_beta[(realized_beta.index > '1990') & (realized_beta.index < '2026')], color='black', linewidth=2, label="Actual Beta 1")
+    plt.plot(realized_beta, color='black', linewidth=2, label=f"Actual {target_col}")
     plt.title(f"{model}: Forecasted vs Actual")
     plt.xlabel("Date")
     plt.ylabel(f"{target_col}")

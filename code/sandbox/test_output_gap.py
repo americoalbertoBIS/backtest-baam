@@ -289,15 +289,17 @@ execution_dates = generate_execution_dates(
     macro_forecast="ar_1"
 )
 
+execution_date = execution_dates[0]
+
 df = df_combined.copy()
-train_data = df.loc[:execution_date].copy()  # Historical data up to the execution date
+train_data_exp = df.loc[:execution_date].copy()  # Historical data up to the execution date
 future_dates = pd.date_range(
-    start=train_data.index[-1] + pd.DateOffset(months=1),
+    start=train_data_exp.index[-1] + pd.DateOffset(months=1),
     periods=max(horizons),
     freq="MS",
 )
-test_data = pd.DataFrame(index=future_dates)  # Future forecast horizons
-combined_data = pd.concat([train_data, test_data], axis=0)
+test_data_exp = pd.DataFrame(index=future_dates)  # Future forecast horizons
+combined_data = pd.concat([train_data_exp, test_data_exp], axis=0)
 
 output_gap_train, output_gap_test = output_gap(
             country=country,
@@ -308,9 +310,6 @@ output_gap_train, output_gap_test = output_gap(
             macro_forecast="ar_1"
         )
 
-train_data['OG'] = output_gap_train
-test_data['OG'] = output_gap_test
+train_data_exp['OG'] = output_gap_train
+test_data_exp['OG'] = output_gap_test
 
-
-plt.plot(df_gdp_mom_extrap)
-plt.plot(test_data)
