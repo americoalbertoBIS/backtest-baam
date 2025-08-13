@@ -12,6 +12,7 @@ os.chdir(r'C:\git\backtest-baam\code')
 from modeling.nelson_siegel import compute_nsr_shadow_ts_noErr
 from data_preparation.data_transformations import calculate_prices_from_yields, calculate_returns_from_prices
 from modeling.evaluation_metrics import calculate_r_squared, calculate_rmse
+from modeling.evaluation_metrics import calculate_out_of_sample_metrics
 
 from datetime import datetime, timedelta
 
@@ -19,6 +20,7 @@ from datetime import datetime, timedelta
 CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 MONTHS_IN_YEAR = 12      # Number of months in a year
 SAVE_DIR = r"C:\git\backtest-baam\data"
+SAVE_DIR = r"L:\RMAS\Users\Alberto\backtest-baam\data"
 LOG_DIR = r"C:\git\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
@@ -49,14 +51,14 @@ def load_betas(results_dir, model_config, execution_date):
         beta_model_name = model_config[beta_name]
 
         # Load forecasted betas
-        forecast_file = f"{beta_name}_forecasts_{beta_model_name}.csv"
-        forecast_path = results_dir / forecast_file
+        forecast_file = f"forecasts.csv"
+        forecast_path = results_dir / beta_model_name / beta_name / forecast_file 
         df_forecast = pd.read_csv(forecast_path)
         beta_data["forecasted"][beta_name] = subset_dataframe(df_forecast, execution_date)
 
         # Load simulated betas
-        simulation_file = f"{beta_name}_simulations_{beta_model_name}.parquet"
-        simulation_path = results_dir / simulation_file
+        simulation_file = f"simulations.parquet"
+        simulation_path = results_dir / beta_model_name / beta_name / simulation_file
         df_simulation = pd.read_parquet(simulation_path)
         beta_data["simulated"][beta_name] = subset_dataframe(df_simulation, execution_date)
 
@@ -78,6 +80,7 @@ class FactorsProcessor:
         self.factors_dir = self.base_dir / "factors"
         self.yields_dir = self.base_dir / "yields"
         self.metrics_dir = self.base_dir / "metrics"
+        self.returns_dir = self.base_dir / "returns"
 
         # Ensure all directories exist
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -177,9 +180,11 @@ class FactorsProcessor:
 
         # Ensure the results directory exists
         self.yields_dir.mkdir(parents=True, exist_ok=True)
+        model_dir = self.yields_dir  / "estimated_yields" / f"{self.model_name}"
+        model_dir.mkdir(parents=True, exist_ok=True)
 
         # File paths
-        output_file_path = self.yields_dir  / f"predicted_yields_{self.model_name}.csv"
+        output_file_path = model_dir / "forecasts.csv"
         lock_file_path = f"{output_file_path}.lock"
 
         # Use FileLock to ensure thread-safe writing
@@ -208,12 +213,13 @@ class FactorsProcessor:
         Compute RMSE and R-squared for each maturity and specific horizons (e.g., 6, 12, 24, 36, 48, 60 months).
         """
         # Define forecast horizons in months
-        forecast_horizons = [6, 12, 24, 36, 48, 60]
+        horizons = [6, 12, 24, 36, 48, 60]  # Forecast horizons
+        horizons = range(1, max(horizons)+1)
     
         for column in self.aligned_observed_yields_df.columns:
             maturity = float(column.split()[0])  # Extract maturity from column name
     
-            for horizon in forecast_horizons:
+            for horizon in horizons:
                 # Filter observed and predicted yields for the specific horizon
                 horizon_end_date = self.execution_date + pd.DateOffset(months=horizon)
                 observed_horizon = self.aligned_observed_yields_df.loc[
@@ -251,44 +257,141 @@ class FactorsProcessor:
                     "Metric": "R-Squared",
                     "Value": r_squared
                 })
-        
+    def calculate_and_save_returns(self):
+        """
+        Calculate and save monthly and annual returns for a given maturity.
+
+        Args:
+            maturity (float): The maturity for which returns are being calculated.
+            prices_for_maturity (pd.DataFrame): Simulated prices for the given maturity.
+        """
+        returns_dir = self.returns_dir / "estimated_returns" / f"{self.model_name}" 
+        returns_dir.mkdir(parents=True, exist_ok=True)
+
+        for maturity in self.yield_curve_model.uniqueTaus:
+            prices_for_maturity = calculate_prices_from_yields(
+                                        self.simulated_observed_yields_df.xs(maturity, level="Maturity", axis=1), 
+                                        maturity
+                                    )
+
+            # Calculate monthly and annual returns
+            monthly_returns, annual_returns = calculate_returns_from_prices(prices_for_maturity, months_in_year=MONTHS_IN_YEAR)
+
+            # Save Monthly Returns
+            monthly_returns_long_format = monthly_returns.reset_index().melt(
+                id_vars=["ForecastDate"],  # Use ForecastDate as the identifier
+                var_name="SimulationID",  # Simulation IDs as variable names
+                value_name="MonthlyReturn"  # Monthly returns as values
+            )
+            monthly_returns_long_format["Maturity"] = f"{maturity} years"
+            monthly_returns_long_format["ExecutionDate"] = self.execution_date
+
+            # Save to a Parquet file
+            monthly_dir = returns_dir / "monthly" / f"{maturity}_years"
+            monthly_dir.mkdir(parents=True, exist_ok=True)
+            monthly_file_path = monthly_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
+            monthly_returns_long_format.to_parquet(monthly_file_path, index=False)
+
+            # Save Annual Returns
+            annual_returns_long_format = annual_returns.reset_index().melt(
+                id_vars=["ForecastDate"],  # Use ForecastDate as the identifier
+                var_name="SimulationID",  # Simulation IDs as variable names
+                value_name="AnnualReturn"  # Annual returns as values
+            )
+            annual_returns_long_format["Maturity"] = f"{maturity} years"
+            annual_returns_long_format["ExecutionDate"] = self.execution_date
+
+            # Save to a Parquet file
+            annual_dir = returns_dir / "annual" / f"{maturity}_years"
+            annual_dir.mkdir(parents=True, exist_ok=True)
+            annual_file_path = annual_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
+            annual_returns_long_format.to_parquet(annual_file_path, index=False)
+
     def compute_var_cvar_vol(self):
         """
-        Compute VaR, CVaR, Expected Returns, and Observed Annual Returns for each year of the horizon and maturity.
+        Compute VaR, CVaR, Expected Returns, and Observed Monthly and Annual Returns for each year of the horizon and maturity.
+        Save monthly and annual metrics to separate files.
         """
+        # Initialize lists to store metrics separately for monthly and annual returns
+        monthly_metrics = []
+        annual_metrics = []
+
         for maturity in self.yield_curve_model.uniqueTaus:
             # Extract simulations for the current maturity
             simulations_for_maturity = self.simulated_observed_yields_df.xs(maturity, level="Maturity", axis=1)
-    
+
             # Convert simulated yields to prices
             prices_for_maturity = calculate_prices_from_yields(simulations_for_maturity, maturity)
-    
+
             # Calculate monthly and annual returns for simulated prices
             monthly_returns, annual_returns = calculate_returns_from_prices(prices_for_maturity, months_in_year=MONTHS_IN_YEAR)
-    
+
             # Convert observed yields to prices
             observed_yields = self.aligned_observed_yields_df[f"{maturity} years"]
             observed_prices = calculate_prices_from_yields(observed_yields, maturity)
-    
+
             # Calculate observed monthly returns
             observed_returns = observed_prices.pct_change(fill_method=None).dropna()
-    
+
             # Group observed returns into annual periods relative to the execution date
             observed_annual_returns = observed_returns.groupby(
                 np.arange(len(observed_returns)) // MONTHS_IN_YEAR
             ).sum()
-    
+
             # Ensure observed annual returns align with simulated annual returns
             observed_annual_returns = observed_annual_returns.iloc[:len(annual_returns)]
-    
-            # Vectorized calculations
+
+            # Vectorized calculations for monthly returns
+            monthly_expected_returns = monthly_returns.mean(axis=1)  # Mean across simulations
+            monthly_var_values = monthly_returns.quantile(CONFIDENCE_LEVEL, axis=1)  # VaR (quantile)
+            monthly_cvar_values = monthly_returns[monthly_returns.le(monthly_var_values, axis=0)].mean(axis=1)  # CVaR
+            monthly_volatility = monthly_returns.std(axis=1)  # Volatility (standard deviation)
+
+            # Vectorized calculations for annual returns
             expected_returns = annual_returns.mean(axis=1)  # Mean across simulations
             var_values = annual_returns.quantile(CONFIDENCE_LEVEL, axis=1)  # VaR (quantile)
-            cvar_values = annual_returns[annual_returns.le(var_values, axis=0)].mean(axis=1)  # CVaR (mean below VaR)
+            cvar_values = annual_returns[annual_returns.le(var_values, axis=0)].mean(axis=1)  # CVaR
             volatility = annual_returns.std(axis=1)  # Volatility (standard deviation)
-            
-            # Iterate through each horizon (1 to 5 years)
-            # Use `zip_longest` to ensure all iterables have the same length
+
+            # Iterate through monthly horizons (1 to 60 months)
+            for horizon, (monthly_return, monthly_var, monthly_cvar, monthly_vol) in enumerate(
+                zip_longest(monthly_expected_returns, monthly_var_values, monthly_cvar_values, monthly_volatility, fillvalue=None), 
+                start=1
+            ):
+                # Skip if the horizon exceeds the available data
+                if horizon > 60:
+                    break
+
+                monthly_metrics.append({
+                    "Maturity (Years)": maturity,
+                    "Execution Date": self.execution_date,
+                    "Horizon (Months)": horizon,
+                    "Metric": "Monthly Expected Return",
+                    "Value": monthly_return
+                })
+                monthly_metrics.append({
+                    "Maturity (Years)": maturity,
+                    "Execution Date": self.execution_date,
+                    "Horizon (Months)": horizon,
+                    "Metric": "Monthly VaR",
+                    "Value": monthly_var
+                })
+                monthly_metrics.append({
+                    "Maturity (Years)": maturity,
+                    "Execution Date": self.execution_date,
+                    "Horizon (Months)": horizon,
+                    "Metric": "Monthly CVaR",
+                    "Value": monthly_cvar
+                })
+                monthly_metrics.append({
+                    "Maturity (Years)": maturity,
+                    "Execution Date": self.execution_date,
+                    "Horizon (Months)": horizon,
+                    "Metric": "Monthly Volatility",
+                    "Value": monthly_vol
+                })
+
+            # Iterate through annual horizons (1 to 5 years)
             for horizon, (expected_return, var, cvar, vol, observed_return) in enumerate(
                 zip_longest(expected_returns, var_values, cvar_values, volatility, observed_annual_returns, fillvalue=None), 
                 start=1
@@ -296,137 +399,118 @@ class FactorsProcessor:
                 # Skip if the horizon exceeds the available data
                 if horizon > 5:
                     break
-    
-                # Perform Kupiec's POF Test
-                #annual_return = annual_returns.iloc[horizon - 1]  # Get returns for the specific year
-                #actual_breaches = len(annual_return[annual_return <= var])
-                #total_observations = len(annual_return)
-                #kupiec_results = kupiec_pof_test(CONFIDENCE_LEVEL, actual_breaches, total_observations)
-    
-                # Perform Christoffersen's Independence Test
-                #breach_sequence = (annual_return <= var).astype(int).tolist()
-                #christoffersen_results = christoffersen_independence_test(breach_sequence)
-    
-                # Perform Basel Traffic Light Test
-                #basel_result = basel_traffic_light(actual_breaches, total_observations, confidence_level=CONFIDENCE_LEVEL)
-    
-                # Perform Ridge Backtest for CVaR (ES)
-                #ridge_results = ridge_backtest(
-                #    es_forecasts=pd.Series(cvar, index=annual_return.index),
-                #    var_forecasts=pd.Series(var, index=annual_return.index),
-                #    observed_returns=annual_return,
-                #    confidence_level=CONFIDENCE_LEVEL
-                #)
-    
-                # Append metrics to the data list
-                self.metrics_data.append({
+
+                annual_metrics.append({
                     "Maturity (Years)": maturity,
                     "Execution Date": self.execution_date,
                     "Horizon (Years)": horizon,
                     "Metric": "VaR",
                     "Value": var
                 })
-                self.metrics_data.append({
+                annual_metrics.append({
                     "Maturity (Years)": maturity,
                     "Execution Date": self.execution_date,
                     "Horizon (Years)": horizon,
                     "Metric": "CVaR",
                     "Value": cvar
                 })
-                self.metrics_data.append({
+                annual_metrics.append({
                     "Maturity (Years)": maturity,
                     "Execution Date": self.execution_date,
                     "Horizon (Years)": horizon,
                     "Metric": "Volatility",
                     "Value": vol
                 })
-                self.metrics_data.append({
+                annual_metrics.append({
                     "Maturity (Years)": maturity,
                     "Execution Date": self.execution_date,
                     "Horizon (Years)": horizon,
                     "Metric": "Expected Returns",
                     "Value": expected_return
                 })
-                self.metrics_data.append({
+                annual_metrics.append({
                     "Maturity (Years)": maturity,
                     "Execution Date": self.execution_date,
                     "Horizon (Years)": horizon,
                     "Metric": "Observed Annual Return",
                     "Value": observed_return
                 })
-# =============================================================================
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Kupiec POF Test Statistic",
-#                     "Value": kupiec_results["test_statistic"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Kupiec POF Test P-Value",
-#                     "Value": kupiec_results["p_value"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Kupiec POF Test Pass",
-#                     "Value": int(kupiec_results["pass"])
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Christoffersen Independence Test Statistic",
-#                     "Value": christoffersen_results["test_statistic"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Christoffersen Independence Test P-Value",
-#                     "Value": christoffersen_results["p_value"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Christoffersen Independence Test Pass",
-#                     "Value": int(christoffersen_results["pass"])
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Basel Traffic Light",
-#                     "Value": basel_result
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Ridge Test Statistic",
-#                     "Value": ridge_results["test_statistic"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Ridge Test P-Value",
-#                     "Value": ridge_results["p_value"]
-#                 })
-#                 self.metrics_data.append({
-#                     "Maturity (Years)": maturity,
-#                     "Execution Date": self.execution_date,
-#                     "Horizon (Years)": horizon,
-#                     "Metric": "Ridge Test Pass",
-#                     "Value": int(ridge_results["pass"])
-#                 })
-# =============================================================================
-        
+
+        # Save monthly metrics to a separate file
+        monthly_metrics_df = pd.DataFrame(monthly_metrics)
+        monthly_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / f"monthly_metrics.csv"
+        lock_file_path = f"{monthly_file_path}.lock"
+        lock = FileLock(lock_file_path)
+        with lock:
+            monthly_metrics_df.to_csv(
+                monthly_file_path,
+                mode='a',  # Append mode
+                header=not monthly_file_path.exists(),  # Write header if the file does not exist
+                index=False  # Do not write the index column
+            )
+
+        # Save annual metrics to a separate file
+        annual_metrics_df = pd.DataFrame(annual_metrics)
+        annual_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / f"annual_metrics.csv"
+        lock_file_path = f"{annual_file_path}.lock"
+        lock = FileLock(lock_file_path)
+        with lock:
+            annual_metrics_df.to_csv(
+                annual_file_path,
+                mode='a',  # Append mode
+                header=not annual_file_path.exists(),  # Write header if the file does not exist
+                index=False  # Do not write the index column
+            )
+
+    def compute_and_save_out_of_sample_metrics(self, df_predictions):
+        """
+        Compute out-of-sample metrics (e.g., RMSE, R-squared) for all maturities and save them to separate files.
+
+        Args:
+            df_predictions (pd.DataFrame): DataFrame containing predictions, actuals, horizons, and execution dates.
+        """
+        # Initialize lists to store metrics for all maturities
+        outofsample_metrics_by_horizon = []
+        outofsample_metrics_by_exec_date = []
+        outofsample_metrics = []
+
+        # Iterate over maturities
+        for maturity in df_predictions['maturity'].unique():
+            # Filter predictions for the current maturity
+            temp = df_predictions[df_predictions['maturity'] == maturity].copy()
+
+            # Calculate metrics for the current maturity
+            outofsample_metrics_temp = calculate_out_of_sample_metrics(temp)
+
+            # Add maturity as a column to each set of metrics
+            outofsample_metrics_temp["by_horizon"]['maturity'] = maturity
+            outofsample_metrics_temp["by_execution_date"]['maturity'] = maturity
+            outofsample_metrics_temp["by_row"]['maturity'] = maturity
+
+            # Append metrics to the corresponding lists
+            outofsample_metrics_by_horizon.append(outofsample_metrics_temp["by_horizon"])
+            outofsample_metrics_by_exec_date.append(outofsample_metrics_temp["by_execution_date"])
+            outofsample_metrics.append(outofsample_metrics_temp["by_row"])
+
+        # Combine metrics across all maturities
+        metrics_by_horizon = pd.concat(outofsample_metrics_by_horizon, ignore_index=True)
+        metrics_by_execution_date = pd.concat(outofsample_metrics_by_exec_date, ignore_index=True)
+        metrics_by_row = pd.concat(outofsample_metrics, ignore_index=True)
+
+        # Save metrics to CSV files
+        print("Saving out-of-sample metrics to files...")
+
+        metrics_by_horizon_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_horizon.csv"
+        metrics_by_horizon.to_csv(metrics_by_horizon_file, index=False)
+
+        metrics_by_execution_date_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_execution_date.csv"
+        metrics_by_execution_date.to_csv(metrics_by_execution_date_file, index=False)
+
+        metrics_by_row_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_row.csv"
+        metrics_by_row.to_csv(metrics_by_row_file, index=False)
+
+        print("Out-of-sample metrics saved successfully.")
+
     def compute_simulated_observed_yields(self):
         """
         Compute simulated observed yields using the Nelson-Siegel model for all simulations.
@@ -474,6 +558,57 @@ class FactorsProcessor:
     
         self.simulated_observed_yields_df /= 100
     
+    def save_simulated_yields_long_format(self):
+        """
+        Save simulated yields in a long-format structure to a Parquet file.
+        """
+        simulations_dir = self.yields_dir / "estimated_yields" / f"{self.model_name}" / "simulations"
+        simulations_dir.mkdir(parents=True, exist_ok=True)
+
+        # Reset the index to include ForecastDate as a column
+        reshaped_df = self.simulated_observed_yields_df.reset_index()
+        reshaped_df.columns = ['ForecastDate'] + [
+        f"{maturity}_{sim_id}" for maturity, sim_id in reshaped_df.columns[1:]
+        ]
+        # Melt the DataFrame to long format
+        long_format_df = reshaped_df.melt(
+        id_vars=["ForecastDate"],  # Keep ForecastDate as an identifier
+        var_name="Maturity_SimulationID",  # Combine Maturity and SimulationID
+        value_name="SimulatedValue"  # Name of the values column
+        )
+        
+        # Split the combined "Maturity_SimulationID" into separate columns
+        long_format_df[["Maturity", "SimulationID"]] = long_format_df["Maturity_SimulationID"].str.split("_", expand=True)
+        
+        # Drop the combined column
+        long_format_df = long_format_df.drop(columns=["Maturity_SimulationID"])
+        
+        # Convert Maturity and SimulationID to appropriate types
+        long_format_df["Maturity"] = long_format_df["Maturity"].astype(float)
+        long_format_df["SimulationID"] = long_format_df["SimulationID"].astype(int)
+
+        # Add additional columns
+        long_format_df["ExecutionDate"] = self.execution_date  # Add execution date
+        long_format_df["Model"] = self.model_name  # Add model name
+        long_format_df["Horizon"] = (long_format_df["ForecastDate"] - self.execution_date).dt.days // 30  # Calculate horizon in months
+        long_format_df["Horizon"] = long_format_df["Horizon"].astype(int)  # Ensure it's an integer
+        long_format_df["Maturity"] = long_format_df["Maturity"].astype(float).map(
+            lambda x: f"{x} years"
+        )  # Convert maturity to a readable string
+        
+        for maturity in self.yield_curve_model.uniqueTaus:
+            maturity_dir = simulations_dir / f"{maturity}_years"
+            maturity_dir.mkdir(parents=True, exist_ok=True)
+
+            # Extract simulations for the current maturity
+            simulations_for_maturity = long_format_df[long_format_df["Maturity"] == f"{maturity} years"]
+
+            # Save each execution date's simulations as a separate Parquet file
+            file_path = maturity_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
+
+            # Save to Parquet
+            simulations_for_maturity.to_parquet(file_path, index=False)
+
     def save_results(self):
         """
         Save metrics to separate CSV files for yields and returns in the 'metrics' subdirectory.

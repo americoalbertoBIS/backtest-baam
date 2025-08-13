@@ -3,6 +3,57 @@ os.chdir(r'C:\git\backtest-baam\code')
 
 import numpy as np
 from scipy.stats import chi2, norm
+from sklearn.metrics import r2_score
+
+def calculate_out_of_sample_metrics(df_predictions):
+    """
+    Calculates out-of-sample metrics (RMSE, R-squared) by horizon, execution date, and row (observation).
+
+    Args:
+        df_predictions (pd.DataFrame): DataFrame containing predictions, actuals, horizons, and execution dates.
+
+    Returns:
+        dict: Metrics including RMSE and R-squared by horizon, execution date, and row (observation).
+    """
+    # Ensure necessary columns are present
+    if not {"horizon", "actual", "prediction", "execution_date", "forecasted_date"}.issubset(df_predictions.columns):
+        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecasted_date' columns.")
+
+    # Drop rows with NaN in Actual or Prediction
+    df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
+
+    # Calculate residuals and squared errors
+    df_predictions["residual"] = df_predictions["actual"] - df_predictions["prediction"]
+    df_predictions["squared_error"] = df_predictions["residual"] ** 2
+    df_predictions["rmse_row"] = np.sqrt(df_predictions["squared_error"])  # RMSE for each row
+
+    # Metrics by horizon
+    metrics_by_horizon = (
+        df_predictions.groupby("horizon")
+        .apply(lambda group: pd.Series({
+            "mse": group["squared_error"].mean(),
+            "r_squared": r2_score(group["actual"], group["prediction"]),
+            "rmse": np.sqrt(group["squared_error"].mean())
+        }))
+        .reset_index()
+    )
+
+    # RMSE by execution date
+    metrics_by_execution_date = (
+        df_predictions.groupby("execution_date")
+        .apply(lambda group: pd.Series({
+            "mse": group["squared_error"].mean(),
+            "r_squared": r2_score(group["actual"], group["prediction"]),
+            "rmse": np.sqrt(group["squared_error"].mean())
+        }))
+        .reset_index()
+    )
+
+    return {
+        "by_horizon": metrics_by_horizon,
+        "by_execution_date": metrics_by_execution_date,
+        "by_row": df_predictions[["execution_date", "forecasted_date", "horizon", "rmse_row"]]  # RMSE for each row
+    }
 
 def calculate_rmse(predictions, actuals):
     """
