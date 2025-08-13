@@ -70,7 +70,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
         df_combined = data_loader.get_data()
 
         # Step 4: Filter models and target columns
-        models_to_run = [model for model in models if model["name"] == model_name_to_test] if model_name_to_test else models[5:]
+        models_to_run = [model for model in models if model["name"] == model_name_to_test] if model_name_to_test else models
         target_columns_to_run = [target_col_to_test] if target_col_to_test else target_columns
 
         # Step 4: Loop through models and target columns
@@ -110,7 +110,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['US'] #  'US', 'UK' EA
+    countries = ['UK'] #  'US', 'UK' EA , 'UK'
     test = False
     if test:
         model_name_to_test = "AR(1) + Inflation (UCSV) - MRM"
