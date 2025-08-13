@@ -125,3 +125,38 @@ def convert_mom_to_yoy(mom_series, col_name='YoY_inflation'):
     df_series = pd.DataFrame(mom_series)
     df_series[col_name] = mom2yoy_logarithmic(df_series)
     return df_series[col_name]
+
+def calculate_prices_from_yields(yields, maturity):
+    """
+    Convert yields to zero-coupon bond prices for a given maturity.
+
+    Args:
+        yields (pd.DataFrame): DataFrame of yields (rows: dates, columns: simulations).
+        maturity (float): Maturity of the bond.
+
+    Returns:
+        pd.DataFrame: DataFrame of bond prices.
+    """
+    return 1 / (1 + yields) ** maturity  # Price = 1 / (1 + Y)^T
+
+
+def calculate_returns_from_prices(prices, months_in_year=12):
+    """
+    Calculate monthly and annual returns from bond prices.
+
+    Args:
+        prices (pd.DataFrame): DataFrame of bond prices (rows: dates, columns: simulations).
+        months_in_year (int): Number of months in a year (default: 12).
+
+    Returns:
+        tuple: (monthly_returns, annual_returns)
+            - monthly_returns: DataFrame of monthly returns.
+            - annual_returns: DataFrame of annual returns (aggregated from monthly returns).
+    """
+    # Calculate monthly returns
+    monthly_returns = prices.pct_change(fill_method = None)  # Drop NaN values after percentage change
+
+    # Aggregate monthly returns into annual returns (arithmetic sum)
+    annual_returns = monthly_returns.groupby(np.arange(len(monthly_returns)) // months_in_year).sum()
+
+    return monthly_returns, annual_returns

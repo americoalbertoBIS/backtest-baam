@@ -8,7 +8,7 @@ Created on Wed Jul 16 17:20:10 2025
 import pandas as pd
 import matplotlib.pyplot as plt
 
-df = pd.read_csv(r'C:\git\backtest-baam\data\US\US_observed_yields_forecasts_AR_1.csv')
+df = pd.read_csv(r'L:\RMAS\Users\Alberto\backtest-baam\data\US\yields\US_observed_yields_forecasts_AR_1.csv')
 # Convert forecasted_date and execution_date to datetime for proper sorting and grouping
 df['forecasted_date'] = pd.to_datetime(df['forecasted_date'])
 df['execution_date'] = pd.to_datetime(df['execution_date'])
