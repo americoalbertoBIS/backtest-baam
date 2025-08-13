@@ -294,10 +294,12 @@ class FactorsProcessor:
 
             # Save Annual Returns
             annual_returns_long_format = annual_returns.reset_index().melt(
-                id_vars=["ForecastDate"],  # Use ForecastDate as the identifier
+                id_vars=["index"],  # Use ForecastDate as the identifier
                 var_name="SimulationID",  # Simulation IDs as variable names
                 value_name="AnnualReturn"  # Annual returns as values
             )
+            annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "Horizon (Years)"})
+            annual_returns_long_format["Horizon (Years)"] = annual_returns_long_format["Horizon (Years)"]+1
             annual_returns_long_format["Maturity"] = f"{maturity} years"
             annual_returns_long_format["ExecutionDate"] = self.execution_date
 
