@@ -405,7 +405,7 @@ def run_yield_forecasts_parallel(country, observed_yields_df, obs_yields_model_d
 
 
 if __name__ == "__main__":
-    country = 'EA' # US
+    country = 'UK' # US EA
     
     # Configure logging
     logging.basicConfig(
