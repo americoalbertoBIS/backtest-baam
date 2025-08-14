@@ -23,7 +23,7 @@ MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
 # Configure logging
 logging.basicConfig(
-    filename=os.path.join(LOG_DIR, "main_factors_processing.log"),
+    filename=os.path.join(LOG_DIR, "US_main_factors_processing.log"),
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -83,7 +83,7 @@ def compute_and_save_out_of_sample_metrics(df_predictions, output_dir):
 
     print("Out-of-sample metrics saved successfully.")
 
-def process_execution_date(country, model_name, model_config, execution_date, yield_curve_model, model_params):
+def process_execution_date(country, model_name, model_config, execution_date, yield_curve_model, model_params, preloaded_data):
     """
     Process a single execution date for a given country and model.
 
@@ -94,52 +94,54 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
         execution_date (datetime): The execution date being processed.
         yield_curve_model (YieldCurveModel): The yield curve model instance.
         model_params (dict): The model parameters.
+        preloaded_data (dict): Preloaded forecasted and simulated beta data.
     """
-    #print(f"Processing execution date: {execution_date} for model: {model_name} in country: {country}")
-    
-    # Create an instance of YieldCurveProcessor
-    processor = FactorsProcessor(
-        country=country,
-        model_name=model_name,
-        model_config=model_config,
-        execution_date=execution_date,
-        yield_curve_model=yield_curve_model,
-        model_params=model_params
-    )
+    try:
+        # Create an instance of FactorsProcessor
+        processor = FactorsProcessor(
+            country=country,
+            model_name=model_name,
+            model_config=model_config,
+            execution_date=execution_date,
+            yield_curve_model=yield_curve_model,
+            model_params=model_params,
+            preloaded_data=preloaded_data  # Pass preloaded data
+        )
 
-    # Process the selected beta combination for the current execution date
-    processor.load_betas()  # Load forecasted and simulated betas
-    processor.compute_simulated_observed_yields()  # Compute yields using simulations
-    processor.save_simulated_yields_long_format()
-    processor.compute_observed_yields()  # Process observed yields
-    processor.compute_predicted_yields()  # Compute predicted yields
-    processor.align_observed_and_predicted_yields()  # Align observed and predicted yields
+        # Process the selected beta combination for the current execution date
+        processor.load_betas()  # Load forecasted and simulated betas
+        processor.compute_simulated_observed_yields()  # Compute yields using simulations
+        processor.save_simulated_yields_long_format()
+        processor.compute_observed_yields()  # Process observed yields
+        processor.compute_predicted_yields()  # Compute predicted yields
+        processor.align_observed_and_predicted_yields()  # Align observed and predicted yields
 
-    # calculate and save returns
-    processor.calculate_and_save_returns()  # Save monthly and annual returns
-    processor.compute_var_cvar_vol()
+        # Calculate and save returns
+        processor.calculate_and_save_returns()  # Save monthly and annual returns
+        processor.compute_var_cvar_vol()
 
-    aligned_data = pd.concat(
-                        [processor.aligned_observed_yields_df.stack(), processor.aligned_predicted_yields_df.stack()],
-                        axis=1,
-                        keys=["actual", "prediction"]
-                        ).dropna()  # Drop rows where either observed or predicted values are missing
+        aligned_data = pd.concat(
+            [processor.aligned_observed_yields_df.stack(), processor.aligned_predicted_yields_df.stack()],
+            axis=1,
+            keys=["actual", "prediction"]
+        ).dropna()  # Drop rows where either observed or predicted values are missing
 
-    # Construct the predictions DataFrame
-    predictions = pd.DataFrame({
-        "horizon": (aligned_data.index.get_level_values(0) - execution_date).days // 30,
-        "actual": aligned_data["actual"].values,
-        "prediction": aligned_data["prediction"].values,
-        "execution_date": execution_date,
-        "forecasted_date": aligned_data.index.get_level_values(0),
-        "maturity": aligned_data.index.get_level_values(1)
-    }).reset_index(drop=True)
-    
-    return predictions
-    #processor.compute_rmse_r_squared()  # Compute RMSE and R-squared
-    processor.compute_and_save_out_of_sample_metrics() # Compute and save out-of-sample metrics
-      # Compute VaR, CVaR, and returns
-    #processor.save_results()  # Save results
+        # Construct the predictions DataFrame
+        predictions = pd.DataFrame({
+            "horizon": (aligned_data.index.get_level_values(0) - execution_date).days // 30,
+            "actual": aligned_data["actual"].values,
+            "prediction": aligned_data["prediction"].values,
+            "execution_date": execution_date,
+            "forecasted_date": aligned_data.index.get_level_values(0),
+            "maturity": aligned_data.index.get_level_values(1)
+        }).reset_index(drop=True)
+
+        return predictions
+
+    except ValueError as e:
+        # Log the error and skip processing for this execution date
+        logging.warning(f"Skipping execution date {execution_date}: {e}")
+        return None
 
 def main():
     """
@@ -168,14 +170,15 @@ def main():
         }
     }
     models_configurations = {
-        "AR_1": {
-            "beta1": "AR_1",
-            "beta2": "AR_1",
+        "Mixed_Model": {
+            "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+            "beta2": "AR_1_Output_Gap_Direct",
             "beta3": "AR_1"
-        },
+        }
     }
+
     # Determine the number of workers for parallel processing
-    max_workers = max(1, multiprocessing.cpu_count() // 2)
+    max_workers = max(1, multiprocessing.cpu_count() // 3)
     logging.info(f"Using {max_workers} workers for parallel processing.")
 
     all_predictions = []  # List to store predictions for all execution dates
@@ -201,9 +204,36 @@ def main():
             # Get all execution dates for the current country and model combination
             execution_dates_file = Path(SAVE_DIR) / country / "factors" / model_config["beta1"] / "beta1" / "forecasts.csv"
             execution_dates = pd.read_csv(execution_dates_file)['ExecutionDate'].unique()
+            execution_dates = pd.to_datetime(execution_dates)  # Convert execution dates to datetime
+            execution_dates = sorted(execution_dates)
+            
+            # Preload forecasted and simulated beta data
+            preloaded_data = {"forecasted": {}, "simulated": {}}
+            for beta_name in ["beta1", "beta2", "beta3"]:
+                beta_model_name = model_config[beta_name]
 
-            # Convert execution dates to datetime
-            execution_dates = pd.to_datetime(execution_dates)
+                # Load forecasted betas
+                forecast_path = Path(SAVE_DIR) / country / "factors" / beta_model_name / beta_name / "forecasts.csv"
+                if forecast_path.exists():
+                    df_forecast = pd.read_csv(forecast_path)
+                    df_forecast['ExecutionDate'] = pd.to_datetime(df_forecast['ExecutionDate'])  # Ensure datetime type
+                    df_forecast['ForecastDate'] = pd.to_datetime(df_forecast['ForecastDate'])  # Ensure datetime type
+                    preloaded_data["forecasted"][beta_name] = df_forecast.sort_values(by=["ExecutionDate", "ForecastDate"])  # Sort
+                else:
+                    logging.warning(f"Forecast file not found: {forecast_path}")
+
+                # Load simulated betas
+                simulation_path = Path(SAVE_DIR) / country / "factors" / beta_model_name / beta_name / "simulations.parquet"
+                if simulation_path.exists():
+                    df_simulation = pd.read_parquet(simulation_path)
+                    df_simulation['ExecutionDate'] = pd.to_datetime(df_simulation['ExecutionDate'])  # Ensure datetime type
+                    df_simulation['ForecastDate'] = pd.to_datetime(df_simulation['ForecastDate'])  # Ensure datetime type
+                    preloaded_data["simulated"][beta_name] = df_simulation.sort_values(by=["ExecutionDate", "ForecastDate"])  # Sort
+                else:
+                    logging.warning(f"Simulation file not found: {simulation_path}")
+
+            # Log the structure of preloaded_data
+            logging.info(f"Preloaded data structure: {preloaded_data.keys()}")
 
             # Partition execution dates into non-overlapping chunks for each worker
             execution_dates_chunks = np.array_split(execution_dates, max_workers)
@@ -218,7 +248,8 @@ def main():
                         model_config,
                         execution_date,
                         yield_curve_model,
-                        modelParams
+                        modelParams,
+                        preloaded_data  # Pass preloaded data to the worker
                     )
                     for chunk in execution_dates_chunks
                     for execution_date in chunk
@@ -234,7 +265,7 @@ def main():
             # Combine all predictions into a single DataFrame
             df_predictions = pd.concat(all_predictions, ignore_index=True)
 
-            compute_and_save_out_of_sample_metrics(df_predictions, Path(SAVE_DIR) / country / "yields" / model_name)
+            compute_and_save_out_of_sample_metrics(df_predictions, Path(SAVE_DIR) / country / "yields" / "estimated_yields" / model_name)
 
     logging.info("Out-of-sample metrics saved successfully.")
 
