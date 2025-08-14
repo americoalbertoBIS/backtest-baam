@@ -92,7 +92,7 @@ class FactorsProcessor:
             df['ForecastDate'] = pd.to_datetime(df['ForecastDate'])  # Ensure datetime type
             df = df.sort_values(by=["ExecutionDate", "ForecastDate"])  # Sort by ExecutionDate and ForecastDate
             filtered_df = df[df['ExecutionDate'] == execution_date].copy()
-            logging.info(f"Filtered DataFrame for execution date {execution_date}: {filtered_df.shape[0]} rows")
+            #logging.info(f"Filtered DataFrame for execution date {execution_date}: {filtered_df.shape[0]} rows")
             return filtered_df
 
         # Ensure preloaded data is available
