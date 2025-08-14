@@ -18,15 +18,9 @@ from backtesting.factors_processing import FactorsProcessor
 CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 MONTHS_IN_YEAR = 12      # Number of months in a year
 SAVE_DIR = r"L:\RMAS\Users\Alberto\backtest-baam\data"
-LOG_DIR = r"C:\git\backtest-baam\logs"
+#LOG_DIR = r"C:\git\backtest-baam\logs"
+LOG_DIR = r"L:\RMAS\Users\Alberto\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
-
-# Configure logging
-logging.basicConfig(
-    filename=os.path.join(LOG_DIR, "US_main_factors_processing.log"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
 
 def compute_and_save_out_of_sample_metrics(df_predictions, output_dir):
     """
@@ -151,31 +145,7 @@ def main():
     data_loader = DataLoaderYC(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US']  # Add other countries if needed (e.g., 'UK') , 'EA'
-    models_configurations = {
-        "AR_1": {
-            "beta1": "AR_1",
-            "beta2": "AR_1",
-            "beta3": "AR_1"
-        },
-        "AR_1_Output_Gap_Direct_Inflation_UCSV": {
-            "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-            "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-            "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
-        },
-        "Mixed_Model": {
-            "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-            "beta2": "AR_1_Output_Gap_Direct",
-            "beta3": "AR_1"
-        }
-    }
-    models_configurations = {
-        "Mixed_Model": {
-            "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-            "beta2": "AR_1_Output_Gap_Direct",
-            "beta3": "AR_1"
-        }
-    }
+    countries = ['US', 'EA', 'UK']  # Add other countries if needed (e.g., 'UK') , 'EA'
 
     # Determine the number of workers for parallel processing
     max_workers = max(1, multiprocessing.cpu_count() // 3)
@@ -184,6 +154,60 @@ def main():
     all_predictions = []  # List to store predictions for all execution dates
 
     for country in countries:
+        
+        # Configure logging
+        logging.basicConfig(
+            filename=os.path.join(LOG_DIR, f"{country}_main_factors_processing.log"),
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+
+        if country == 'US':
+            models_configurations = {
+                "AR_1_Output_Gap_Direct_Inflation_UCSV": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
+                },
+                "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
+                },
+                "Mixed_Model_MRM": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta2": "AR_1_Output_Gap_Direct_MRM",
+                    "beta3": "AR_1"
+                }
+            }
+        else:
+            models_configurations = {
+                "AR_1": {
+                    "beta1": "AR_1",
+                    "beta2": "AR_1",
+                    "beta3": "AR_1"
+                },
+                "AR_1_Output_Gap_Direct_Inflation_UCSV": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
+                },
+                "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
+                },
+                "Mixed_Model": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                    "beta2": "AR_1_Output_Gap_Direct",
+                    "beta3": "AR_1"
+                },
+                "Mixed_Model_MRM": {
+                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                    "beta2": "AR_1_Output_Gap_Direct_MRM",
+                    "beta3": "AR_1"
+                }
+            }
         logging.info(f"Starting processing for country: {country}")
 
         # Load data for the country
