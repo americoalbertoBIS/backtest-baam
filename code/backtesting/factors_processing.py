@@ -5,6 +5,7 @@ import mlflow
 from pathlib import Path
 from itertools import zip_longest
 from filelock import FileLock
+import logging 
 
 import os
 os.chdir(r'C:\git\backtest-baam\code')
@@ -24,55 +25,30 @@ SAVE_DIR = r"L:\RMAS\Users\Alberto\backtest-baam\data"
 LOG_DIR = r"C:\git\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
-def load_betas(results_dir, model_config, execution_date):
-    """
-    Load the beta forecast and simulation files for a specific model configuration.
-
-    Args:
-        results_dir (str): Directory where the beta forecast and simulation files are stored.
-        model_config (dict): Configuration for the selected model (e.g., "Mixed_Model").
-        execution_date (str): Execution date for filtering.
-
-    Returns:
-        dict: A dictionary containing DataFrames for forecasted and simulated betas.
-    """
-    def subset_dataframe(df, execution_date):
-        df['ExecutionDate'] = pd.to_datetime(df['ExecutionDate'])
-        df['ForecastDate'] = pd.to_datetime(df['ForecastDate'])
-        return df[df['ExecutionDate'] == execution_date].copy()
-
-    beta_data = {
-        "forecasted": {},
-        "simulated": {}
-    }
-
-    for beta_name in ["beta1", "beta2", "beta3"]:
-        # Get the beta model name from the configuration
-        beta_model_name = model_config[beta_name]
-
-        # Load forecasted betas
-        forecast_file = f"forecasts.csv"
-        forecast_path = results_dir / beta_model_name / beta_name / forecast_file 
-        df_forecast = pd.read_csv(forecast_path)
-        beta_data["forecasted"][beta_name] = subset_dataframe(df_forecast, execution_date)
-
-        # Load simulated betas
-        simulation_file = f"simulations.parquet"
-        simulation_path = results_dir / beta_model_name / beta_name / simulation_file
-        df_simulation = pd.read_parquet(simulation_path)
-        beta_data["simulated"][beta_name] = subset_dataframe(df_simulation, execution_date)
-
-    return beta_data
+from filelock import FileLock
 
 class FactorsProcessor:
-    def __init__(self, country, model_name, model_config, execution_date, yield_curve_model, model_params):
+    def __init__(self, country, model_name, model_config, execution_date, yield_curve_model, model_params, preloaded_data=None):
+        """
+        Initialize the FactorsProcessor class.
+
+        Args:
+            country (str): The country being processed (e.g., "US").
+            model_name (str): The name of the model being processed (e.g., "Mixed_Model").
+            model_config (dict): Configuration for the selected model.
+            execution_date (datetime): The execution date being processed.
+            yield_curve_model (YieldCurveModel): The yield curve model instance.
+            model_params (dict): The model parameters.
+            preloaded_data (dict, optional): Preloaded forecasted and simulated beta data.
+        """
         self.country = country
-        self.model_name = model_name  # Name of the model (e.g., "Mixed_Model")
-        self.model_config = model_config  # Configuration for the selected model
+        self.model_name = model_name
+        self.model_config = model_config
         self.execution_date = execution_date
         self.yield_curve_model = yield_curve_model
         self.model_params = model_params
-        
+        self.preloaded_data = preloaded_data  # Preloaded data for forecasted and simulated betas
+
         # Base directory for the country
         self.base_dir = Path(SAVE_DIR) / country   
              
@@ -93,10 +69,68 @@ class FactorsProcessor:
 
     def load_betas(self):
         """
-        Load forecasted and simulated betas based on the selected model configuration.
+        Load forecasted and simulated betas based on the selected model configuration using preloaded data.
+
+        This function filters the preloaded beta data for the current execution date and aligns
+        the data across all three factors (`beta1`, `beta2`, `beta3`).
+
+        Raises:
+            ValueError: If any of the forecasted or simulated beta DataFrames are empty for a valid execution date.
         """
-        # Load forecasted and simulated betas
-        beta_data = load_betas(self.factors_dir, self.model_config, self.execution_date)
+        def subset_dataframe(df, execution_date):
+            """
+            Filter a DataFrame for the given execution date.
+
+            Args:
+                df (pd.DataFrame): The DataFrame to filter.
+                execution_date (datetime): The execution date to filter by.
+
+            Returns:
+                pd.DataFrame: The filtered DataFrame.
+            """
+            df['ExecutionDate'] = pd.to_datetime(df['ExecutionDate'])  # Ensure datetime type
+            df['ForecastDate'] = pd.to_datetime(df['ForecastDate'])  # Ensure datetime type
+            df = df.sort_values(by=["ExecutionDate", "ForecastDate"])  # Sort by ExecutionDate and ForecastDate
+            filtered_df = df[df['ExecutionDate'] == execution_date].copy()
+            #logging.info(f"Filtered DataFrame for execution date {execution_date}: {filtered_df.shape[0]} rows")
+            return filtered_df
+
+        # Ensure preloaded data is available
+        if not self.preloaded_data:
+            raise ValueError("Preloaded data is missing. Ensure preloaded_data is passed to FactorsProcessor.")
+
+        beta_data = {
+            "forecasted": {},
+            "simulated": {}
+        }
+
+        # Use beta1 as the baseline for execution dates
+        baseline_execution_dates = self.preloaded_data["forecasted"]["beta1"]["ExecutionDate"].unique()
+        logging.info(f"Baseline execution dates (from beta1): {len(baseline_execution_dates)} dates")
+
+        # Check if the current execution date is in beta1
+        if self.execution_date not in baseline_execution_dates:
+            logging.warning(f"Execution date {self.execution_date} is not available in beta1. Skipping...")
+            raise ValueError(f"Execution date {self.execution_date} is not available in beta1.")
+
+        # Filter and align data for beta1, beta2, and beta3
+        for beta_name in ["beta1", "beta2", "beta3"]:
+            # Check if preloaded data contains the required keys
+            if beta_name not in self.preloaded_data["forecasted"] or beta_name not in self.preloaded_data["simulated"]:
+                raise ValueError(f"Preloaded data is missing for '{beta_name}'")
+
+            # Filter forecasted and simulated data for the given execution date
+            forecasted_df = subset_dataframe(self.preloaded_data["forecasted"][beta_name], self.execution_date)
+            simulated_df = subset_dataframe(self.preloaded_data["simulated"][beta_name], self.execution_date)
+
+            # Check if the execution date exists in the data for the current beta
+            if forecasted_df.empty or simulated_df.empty:
+                logging.warning(f"Execution date {self.execution_date} is not available in {beta_name}. Skipping...")
+                raise ValueError(f"Execution date {self.execution_date} is not available in {beta_name}.")
+
+            # Assign filtered data to beta_data
+            beta_data["forecasted"][beta_name] = forecasted_df
+            beta_data["simulated"][beta_name] = simulated_df
 
         # Assign forecasted and simulated betas to class attributes
         self.df_pred_beta1 = beta_data["forecasted"]["beta1"]
@@ -106,6 +140,9 @@ class FactorsProcessor:
         self.df_sim_beta1 = beta_data["simulated"]["beta1"]
         self.df_sim_beta2 = beta_data["simulated"]["beta2"]
         self.df_sim_beta3 = beta_data["simulated"]["beta3"]
+
+        # Log success
+        logging.info(f"Successfully loaded and aligned betas for execution date {self.execution_date}")
 
     def compute_observed_yields(self):
         """
@@ -131,9 +168,9 @@ class FactorsProcessor:
         """
         # Combine forecasted betas into a rotated array
         rotated_betas = np.array([
-            self.df_pred_beta1['Prediction'].dropna().values,
-            self.df_pred_beta2['Prediction'].dropna().values,
-            self.df_pred_beta3['Prediction'].dropna().values
+            self.df_pred_beta1['Prediction'].values,
+            self.df_pred_beta2['Prediction'].values,
+            self.df_pred_beta3['Prediction'].values
         ]).T
 
         # Compute predicted yields
