@@ -5,6 +5,8 @@ import numpy as np
 from scipy.stats import chi2, norm
 from sklearn.metrics import r2_score
 
+import pandas as pd
+
 def calculate_out_of_sample_metrics(df_predictions):
     """
     Calculates out-of-sample metrics (RMSE, R-squared) by horizon, execution date, and row (observation).
