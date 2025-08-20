@@ -145,7 +145,7 @@ def main():
     data_loader = DataLoaderYC(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US', 'EA', 'UK']  # Add other countries if needed (e.g., 'UK') , 'EA'
+    countries = ['US', 'EA', 'UK']  # Add other countries if needed 
 
     # Determine the number of workers for parallel processing
     max_workers = max(1, multiprocessing.cpu_count() // 3)
@@ -162,52 +162,35 @@ def main():
             format="%(asctime)s - %(levelname)s - %(message)s"
         )
 
-        if country == 'US':
-            models_configurations = {
-                "AR_1_Output_Gap_Direct_Inflation_UCSV": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
-                },
-                "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
-                },
-                "Mixed_Model_MRM": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta2": "AR_1_Output_Gap_Direct_MRM",
-                    "beta3": "AR_1"
-                }
+        
+        models_configurations = {
+            "AR_1": {
+                "beta1": "AR_1",
+                "beta2": "AR_1",
+                "beta3": "AR_1"
+            },
+            "AR_1_Output_Gap_Direct_Inflation_UCSV": {
+                "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
+            },
+            "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
+                "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
+            },
+            "Mixed_Model": {
+                "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                "beta2": "AR_1_Output_Gap_Direct",
+                "beta3": "AR_1"
+            },
+            "Mixed_Model_MRM": {
+                "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+                "beta2": "AR_1_Output_Gap_Direct_MRM",
+                "beta3": "AR_1"
             }
-        else:
-            models_configurations = {
-                "AR_1": {
-                    "beta1": "AR_1",
-                    "beta2": "AR_1",
-                    "beta3": "AR_1"
-                },
-                "AR_1_Output_Gap_Direct_Inflation_UCSV": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
-                },
-                "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
-                },
-                "Mixed_Model": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
-                    "beta2": "AR_1_Output_Gap_Direct",
-                    "beta3": "AR_1"
-                },
-                "Mixed_Model_MRM": {
-                    "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
-                    "beta2": "AR_1_Output_Gap_Direct_MRM",
-                    "beta3": "AR_1"
-                }
-            }
+        }
+        
         logging.info(f"Starting processing for country: {country}")
 
         # Load data for the country
