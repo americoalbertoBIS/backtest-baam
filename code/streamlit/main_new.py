@@ -72,7 +72,7 @@ def create_dual_axis_plot(data, x_col, y1_col, y2_col, title, y1_label, y2_label
     
     # Add coefficient trace (primary y-axis)
     fig.add_trace(
-        go.Scatter(x=data[x_col], y=data[y1_col], mode='lines', name=y1_label, line=dict(color='blue')),
+        go.Scatter(x=data[x_col], y=data[y1_col], mode='lines', name=y1_label, line=dict(color='#3a6bac')),
         secondary_y=False
     )
     
@@ -83,7 +83,7 @@ def create_dual_axis_plot(data, x_col, y1_col, y2_col, title, y1_label, y2_label
             y=data[data[y2_col] < 0.05][y2_col], 
             mode='markers',  # Use markers only
             name=f"{y2_label} (< 0.05)", 
-            marker=dict(color='red', size=3, symbol='circle')
+            marker=dict(color='#c28191', size=3, symbol='circle')
         ),
         secondary_y=True
     )
@@ -738,7 +738,7 @@ with tab_simulations:
             x=combined_data.index,
             y=combined_data["Median"],
             mode="lines",
-            line=dict(color="blue", width=2),
+            line=dict(color="#3a6bac", width=2),
             name="Median Simulation"
         ))
 
@@ -747,7 +747,7 @@ with tab_simulations:
             x=combined_data.index,
             y=combined_data["Actual"],
             mode="lines",
-            line=dict(color="red", width=2),
+            line=dict(color="#c28191", width=2),
             name="Actual"
         ))
 
@@ -812,7 +812,7 @@ with tab_simulations:
                             x=historical_actuals.index,
                             y=historical_actuals["Actual"],
                             mode="lines",
-                            line=dict(color="red", width=2),
+                            line=dict(color="#c28191", width=2),
                             name="Actual"
                         ))
 
@@ -869,7 +869,7 @@ with tab_simulations:
                                 x=projections_data.index,
                                 y=projections_data["Median"],
                                 mode="lines",
-                                line=dict(color="blue", width=2),
+                                line=dict(color="#3a6bac", width=2),
                                 name="Median Simulation"
                             ))
 
@@ -878,7 +878,7 @@ with tab_simulations:
                                 x=projections_data.index,
                                 y=projections_data["Actual"],
                                 mode="lines+markers",
-                                line=dict(color="red", width=2),
+                                line=dict(color="#c28191", width=2),
                                 name="Actual"
                             ))
 
@@ -1276,7 +1276,7 @@ with tab_yields:
                     labels={"rmse": "RMSE", "ExecutionDate": "Execution Date"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1291,6 +1291,7 @@ with tab_yields:
             combined_data = []
             for model, data in horizon_data.items():
                 filtered_data = data[data["maturity"] == maturity]
+                filtered_data = filtered_data[filtered_data["Horizon"] != 0]
                 if not filtered_data.empty:
                     # Divide RMSE by 100 for the benchmark model
                     if model == f"{benchmark_model} (Benchmark)":
@@ -1309,7 +1310,7 @@ with tab_yields:
                     labels={"rmse": "RMSE", "Horizon": "Horizon"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1550,7 +1551,7 @@ with tab_sim_yields:
                         x=combined_data.index,
                         y=combined_data["Median"],
                         mode="lines",
-                        line=dict(color="blue", width=2),
+                        line=dict(color="#3a6bac", width=2),
                         name="Median Simulation"
                     ))
 
@@ -1559,7 +1560,7 @@ with tab_sim_yields:
                         x=combined_data.index,
                         y=combined_data["SimulatedValue"],
                         mode="lines",
-                        line=dict(color="red", width=2),
+                        line=dict(color="#c28191", width=2),
                         name="Actual"
                     ))
 
@@ -1646,9 +1647,9 @@ with tab_returns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
                 y=pivot_df["Observed Annual Return"],
-                mode="lines+markers",
+                mode="lines",
                 name="Observed Annual Return",
-                line=dict(color="blue"),
+                line=dict(color="#3a6bac"),
                 marker=dict(size=6)
             ))
 
@@ -1656,9 +1657,9 @@ with tab_returns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
                 y=pivot_df["Expected Returns"],
-                mode="lines+markers",
+                mode="lines",
                 name="Expected Returns",
-                line=dict(color="green"),
+                line=dict(color="#eaa121"),
                 marker=dict(size=6)
             ))
 
@@ -1668,7 +1669,7 @@ with tab_returns:
                 y=pivot_df["VaR"],
                 mode="lines",
                 name="VaR (Threshold)",
-                line=dict(color="red", dash="dash")
+                line=dict(color="#c28191") #, dash="dash"
             ))
 
             # Add CVaR
@@ -1677,7 +1678,7 @@ with tab_returns:
                 y=pivot_df["CVaR"],
                 mode="lines",
                 name="CVaR (Tail Average)",
-                line=dict(color="orange", dash="dot")
+                line=dict(color="orange") # , dash="dot"
             ))
 
             # Highlight breaches where Observed Annual Return < VaR
@@ -1725,6 +1726,10 @@ def load_model_simulations(model, maturity_folder_path):
     else:
         return pd.DataFrame()  # Return an empty DataFrame if no files are found
 
+
+from scipy.stats import gaussian_kde
+import numpy as np
+import plotly.graph_objects as go
 
 with tab_simulation_comparison:
     st.title("Simulation Comparison: Distribution Analysis Across Models")
@@ -1779,52 +1784,47 @@ with tab_simulation_comparison:
             # Row 1: Time-Series Summary Statistics
             st.subheader("Time-Series Summary Statistics Comparison")
 
+            # Define a color palette for models
+            color_palette = ["#3a6bac", "#aa322f", "#eaa121", "#633d83", "#d55b20", "#427f6d", "#784722"]
+
             # Calculate percentiles and summary statistics for each model
             summary_data = combined_data.groupby(["ExecutionDate", "Model"])["AnnualReturn"].agg(
                 mean="mean",
-                median="median",
                 p5=lambda x: np.percentile(x, 5),
                 p95=lambda x: np.percentile(x, 95)
             ).reset_index()
 
             # Plot the results using Plotly
-            fig = go.Figure()
+            fig_time_series = go.Figure()
 
             # Loop through each selected model and add traces
-            for model in selected_models:
+            for i, model in enumerate(selected_models):
                 model_data = summary_data[summary_data["Model"] == model]
 
+                # Define the color for this model
+                model_color = color_palette[i % len(color_palette)]
+
                 # Add mean line
-                fig.add_trace(go.Scatter(
+                fig_time_series.add_trace(go.Scatter(
                     x=model_data["ExecutionDate"],
                     y=model_data["mean"],
                     mode="lines",
                     name=f"{model} Mean",
-                    line=dict(width=2)
-                ))
-
-                # Add median line
-                fig.add_trace(go.Scatter(
-                    x=model_data["ExecutionDate"],
-                    y=model_data["median"],
-                    mode="lines",
-                    name=f"{model} Median",
-                    line=dict(dash="dot", width=2)
+                    line=dict(width=2, color=model_color)
                 ))
 
                 # Add shaded area for 5th to 95th percentiles
-                fig.add_trace(go.Scatter(
+                fig_time_series.add_trace(go.Scatter(
                     x=model_data["ExecutionDate"].tolist() + model_data["ExecutionDate"].tolist()[::-1],
                     y=model_data["p95"].tolist() + model_data["p5"].tolist()[::-1],
                     fill="toself",
-                    fillcolor="rgba(0,100,200,0.2)",
+                    fillcolor=f"rgba({int(255 * (i / len(color_palette)))}, 100, 200, 0.2)",  # Adjust transparency of the band
                     line=dict(width=0),
-                    name=f"{model} 5th-95th Percentile",
-                    showlegend=False
+                    name=f"{model} 5th-95th Percentile"
                 ))
 
             # Update layout
-            fig.update_layout(
+            fig_time_series.update_layout(
                 title="Simulation Distributions Comparison Across Models (Time-Series)",
                 xaxis_title="Execution Date",
                 yaxis_title="Annual Return",
@@ -1833,68 +1833,153 @@ with tab_simulation_comparison:
             )
 
             # Display the plot
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_time_series, use_container_width=True)
 
-            from scipy.stats import gaussian_kde
-            import numpy as np
+            # Row 2: KDE Subplots for Each Horizon (2x3 layout with an additional "All Horizons" plot)
+            st.subheader("KDE Distribution by Horizon and Overall Across Models")
 
-            # Row 2: Execution Date-Specific Distributions (KDE)
-            st.subheader("Execution Date-Specific Simulation Distributions")
+            # Get unique horizons
+            unique_horizons = sorted(combined_data["Horizon (Years)"].unique())
 
-            # Text input for selecting an execution date
-            available_execution_dates = sorted(combined_data["ExecutionDate"].unique())
-            default_execution_date = available_execution_dates[-1]  # Default to the latest execution date
-            selected_execution_date_str = st.text_input(
-                "Enter Execution Date (format: YYYY-MM-DD)",
-                value=default_execution_date,  # Default value
-                key="simulation_comparison_execution_date_input"
-            )
+            # Create a 2x3 grid using Streamlit columns
+            rows = []
+            n_cols = 3  # Number of columns
+            for i in range(0, len(unique_horizons) + 1, n_cols):
+                # Append a new row of columns
+                rows.append(st.columns(n_cols))
 
-            # Validate the entered execution date
-            try:
-                selected_execution_date = pd.to_datetime(selected_execution_date_str, format="%Y-%m-%d")
-                if selected_execution_date not in available_execution_dates:
-                    st.warning(f"The entered execution date {selected_execution_date_str} is not in the available range.")
-                else:
-                    # Filter the data for the selected execution date
-                    execution_specific_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
+            # Loop through each horizon and add KDE plots
+            for idx, horizon in enumerate(unique_horizons):
+                row_idx = idx // n_cols
+                col_idx = idx % n_cols
 
-                    # Plot KDE graphs for each model
-                    fig = go.Figure()
+                with rows[row_idx][col_idx]:
+                    # Filter data for the current horizon
+                    horizon_data = combined_data[combined_data["Horizon (Years)"] == horizon]
 
-                    for model in selected_models:
-                        model_data = execution_specific_data[execution_specific_data["Model"] == model]
+                    # Create a Plotly figure for the current horizon
+                    fig_kde = go.Figure()
 
-                        # Add KDE line for the model
+                    # Loop through selected models
+                    for i, model in enumerate(selected_models):
+                        model_data = horizon_data[horizon_data["Model"] == model]
+
                         if not model_data.empty:
-                            # Calculate KDE using scipy.stats.gaussian_kde
+                            # Calculate KDE
                             kde = gaussian_kde(model_data["AnnualReturn"])
                             x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
                             y_kde = kde(x_range)
 
-                            # Add KDE line to the plot
-                            fig.add_trace(go.Scatter(
+                            # Define the color for this model
+                            model_color = color_palette[i % len(color_palette)]
+
+                            # Add KDE trace to the figure
+                            fig_kde.add_trace(go.Scatter(
                                 x=x_range,
                                 y=y_kde,
                                 mode="lines",
-                                name=f"{model} KDE",
-                                line=dict(width=2)
+                                name=f"{model}",
+                                line=dict(width=2, color=model_color)
                             ))
 
+                            # Calculate VaR (5th percentile)
+                            var_5 = np.percentile(model_data["AnnualReturn"], 5)
+
+                            # Add vertical line for VaR
+                            fig_kde.add_shape(
+                                type="line",
+                                x0=var_5, x1=var_5,
+                                y0=0, y1=1,
+                                xref="x", yref="paper",
+                                line=dict(color=model_color, width=2, dash="dot"),
+                                name=f"{model} VaR"
+                            )
+
+                    # Add vertical line at zero
+                    fig_kde.add_shape(
+                        type="line",
+                        x0=0, x1=0,
+                        y0=0, y1=1,
+                        xref="x", yref="paper",
+                        line=dict(color="black", width=2, dash="dash"),
+                        name="Zero Line"
+                    )
+
                     # Update layout
-                    fig.update_layout(
-                        title=f"Simulation Distributions by Model (Execution Date: {selected_execution_date_str})",
+                    fig_kde.update_layout(
+                        title=f"Horizon {horizon} Years",
                         xaxis_title="Annual Return",
                         yaxis_title="Density",
+                        showlegend=True,
                         legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
                         template="plotly_white"
                     )
 
                     # Display the KDE plot
-                    st.plotly_chart(fig, use_container_width=True)
-            except ValueError:
-                st.error("Invalid date format. Please enter the date in the format YYYY-MM-DD.")
-        else:
-            st.warning("No data available for the selected models and maturity.")
-    else:
-        st.warning("Please select at least one model and a maturity to proceed.")
+                    st.plotly_chart(fig_kde, use_container_width=True)
+
+            # Add the "All Horizons" plot in the last available slot
+            row_idx = len(unique_horizons) // n_cols
+            col_idx = len(unique_horizons) % n_cols
+
+            with rows[row_idx][col_idx]:
+                # Create a Plotly figure for "All Horizons"
+                fig_all_horizons = go.Figure()
+
+                # Loop through selected models
+                for i, model in enumerate(selected_models):
+                    model_data = combined_data[combined_data["Model"] == model]
+
+                    if not model_data.empty:
+                        # Calculate KDE for all horizons combined
+                        kde = gaussian_kde(model_data["AnnualReturn"])
+                        x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
+                        y_kde = kde(x_range)
+
+                        # Define the color for this model
+                        model_color = color_palette[i % len(color_palette)]
+
+                        # Add KDE trace to the figure
+                        fig_all_horizons.add_trace(go.Scatter(
+                            x=x_range,
+                            y=y_kde,
+                            mode="lines",
+                            name=f"{model}",
+                            line=dict(width=2, color=model_color)
+                        ))
+
+                        # Calculate VaR (5th percentile)
+                        var_5 = np.percentile(model_data["AnnualReturn"], 5)
+
+                        # Add vertical line for VaR
+                        fig_all_horizons.add_shape(
+                            type="line",
+                            x0=var_5, x1=var_5,
+                            y0=0, y1=1,
+                            xref="x", yref="paper",
+                            line=dict(color=model_color, width=2, dash="dot"),
+                            name=f"{model} VaR"
+                        )
+
+                # Add vertical line at zero
+                fig_all_horizons.add_shape(
+                    type="line",
+                    x0=0, x1=0,
+                    y0=0, y1=1,
+                    xref="x", yref="paper",
+                    line=dict(color="black", width=2, dash="dash"),
+                    name="Zero Line"
+                )
+
+                # Update layout
+                fig_all_horizons.update_layout(
+                    title="All Horizons",
+                    xaxis_title="Annual Return",
+                    yaxis_title="Density",
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                    template="plotly_white"
+                )
+
+                # Display the "All Horizons" plot
+                st.plotly_chart(fig_all_horizons, use_container_width=True)
