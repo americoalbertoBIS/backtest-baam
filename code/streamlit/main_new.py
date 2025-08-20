@@ -138,9 +138,9 @@ models = [f.name for f in os.scandir(folder_path) if f.is_dir() and f.name != "a
 target_variables = ["beta1", "beta2", "beta3"]
 
 # Tabs for Out-of-Sample and In-Sample Metrics
-tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns = st.tabs(
+tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_simulation_comparison = st.tabs(
     ["Factors overview","Out-of-Sample Model Comparison", "In-Sample Model Specifics", "Simulations", 
-     "Yields overview", "Yields Backtesting", "Yields Simulations", "Returns"]
+     "Yields overview", "Yields Backtesting", "Yields Simulations", "Returns", "Returns forward looking distributions"]
 )
 
 with tab_factors:
@@ -1703,3 +1703,189 @@ with tab_returns:
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning(f"File not found: {annual_metrics_file}")
+
+@st.cache_data
+def load_model_simulations(model, maturity_folder_path):
+    """
+    Load all simulation parquet files for a specific model and maturity.
+    
+    Args:
+        model (str): The name of the model.
+        maturity_folder_path (str): The folder path for the maturity.
+
+    Returns:
+        pd.DataFrame: Combined DataFrame of all simulations for the model.
+    """
+    all_parquet_files = [os.path.join(maturity_folder_path, f) for f in os.listdir(maturity_folder_path) if f.endswith(".parquet")]
+    if all_parquet_files:
+        # Concatenate all parquet files for the current model
+        model_simulations = pd.concat([pd.read_parquet(file) for file in all_parquet_files], ignore_index=True)
+        model_simulations["Model"] = model  # Add a column to identify the model
+        return model_simulations
+    else:
+        return pd.DataFrame()  # Return an empty DataFrame if no files are found
+
+
+with tab_simulation_comparison:
+    st.title("Simulation Comparison: Distribution Analysis Across Models")
+
+    # Dropdown for selecting models
+    st.subheader("Model Selection")
+    selected_models = st.multiselect(
+        "Select Models to Compare",
+        estimated_models,  # Use the list of available models
+        default=estimated_models[:2],  # Default to the first two models
+        key="simulation_comparison_model_selector"  # Unique key for this dropdown
+    )
+
+    # Dropdown for selecting maturity
+    st.subheader("Maturity Selection")
+    if available_maturities.size > 0:
+        selected_maturity = st.selectbox(
+            "Select Maturity for Simulations",
+            available_maturities.tolist(),
+            key="simulation_comparison_maturity_selector"  # Unique key for this dropdown
+        )
+    else:
+        st.warning("No maturities available for simulations.")
+        selected_maturity = None
+
+    # Check if at least one model and a maturity are selected
+    if selected_models and selected_maturity:
+        combined_data = []
+
+        # Loop through each selected model
+        for model in selected_models:
+            # Adjust folder paths for the model and maturity
+            maturity_folder = f"{selected_maturity}_years"  # Format maturity as "X.XX_years"
+            folder_path = os.path.join(base_folder, selected_country, "returns", "estimated_returns", model, "annual", maturity_folder)
+
+            if os.path.exists(folder_path):
+                # Load the simulations for the current model using caching
+                model_simulations = load_model_simulations(model, folder_path)
+
+                if not model_simulations.empty:
+                    # Append to the combined data
+                    combined_data.append(model_simulations)
+                else:
+                    st.warning(f"No parquet files found for model: {model}")
+            else:
+                st.warning(f"Folder does not exist: {folder_path}")
+
+        # Combine all data across models
+        if combined_data:
+            combined_data = pd.concat(combined_data, ignore_index=True)
+
+            # Row 1: Time-Series Summary Statistics
+            st.subheader("Time-Series Summary Statistics Comparison")
+
+            # Calculate percentiles and summary statistics for each model
+            summary_data = combined_data.groupby(["ExecutionDate", "Model"])["AnnualReturn"].agg(
+                mean="mean",
+                median="median",
+                p5=lambda x: np.percentile(x, 5),
+                p95=lambda x: np.percentile(x, 95)
+            ).reset_index()
+
+            # Plot the results using Plotly
+            fig = go.Figure()
+
+            # Loop through each selected model and add traces
+            for model in selected_models:
+                model_data = summary_data[summary_data["Model"] == model]
+
+                # Add mean line
+                fig.add_trace(go.Scatter(
+                    x=model_data["ExecutionDate"],
+                    y=model_data["mean"],
+                    mode="lines",
+                    name=f"{model} Mean",
+                    line=dict(width=2)
+                ))
+
+                # Add median line
+                fig.add_trace(go.Scatter(
+                    x=model_data["ExecutionDate"],
+                    y=model_data["median"],
+                    mode="lines",
+                    name=f"{model} Median",
+                    line=dict(dash="dot", width=2)
+                ))
+
+                # Add shaded area for 5th to 95th percentiles
+                fig.add_trace(go.Scatter(
+                    x=model_data["ExecutionDate"].tolist() + model_data["ExecutionDate"].tolist()[::-1],
+                    y=model_data["p95"].tolist() + model_data["p5"].tolist()[::-1],
+                    fill="toself",
+                    fillcolor="rgba(0,100,200,0.2)",
+                    line=dict(width=0),
+                    name=f"{model} 5th-95th Percentile",
+                    showlegend=False
+                ))
+
+            # Update layout
+            fig.update_layout(
+                title="Simulation Distributions Comparison Across Models (Time-Series)",
+                xaxis_title="Execution Date",
+                yaxis_title="Annual Return",
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                template="plotly_white"
+            )
+
+            # Display the plot
+            st.plotly_chart(fig, use_container_width=True)
+
+            from scipy.stats import gaussian_kde
+            import numpy as np
+
+            # Row 2: Execution Date-Specific Distributions (KDE)
+            st.subheader("Execution Date-Specific Simulation Distributions")
+
+            # Dropdown to select an execution date
+            available_execution_dates = combined_data["ExecutionDate"].unique()
+            selected_execution_date = st.selectbox(
+                "Select Execution Date",
+                sorted(available_execution_dates),
+                key="simulation_comparison_execution_date_selector"
+            )
+
+            # Filter the data for the selected execution date
+            execution_specific_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
+
+            # Plot KDE graphs for each model
+            fig = go.Figure()
+
+            for model in selected_models:
+                model_data = execution_specific_data[execution_specific_data["Model"] == model]
+
+                # Add KDE line for the model
+                if not model_data.empty:
+                    # Calculate KDE using scipy.stats.gaussian_kde
+                    kde = gaussian_kde(model_data["AnnualReturn"])
+                    x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
+                    y_kde = kde(x_range)
+
+                    # Add KDE line to the plot
+                    fig.add_trace(go.Scatter(
+                        x=x_range,
+                        y=y_kde,
+                        mode="lines",
+                        name=f"{model} KDE",
+                        line=dict(width=2)
+                    ))
+
+            # Update layout
+            fig.update_layout(
+                title=f"Simulation Distributions by Model (Execution Date: {selected_execution_date})",
+                xaxis_title="Annual Return",
+                yaxis_title="Density",
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                template="plotly_white"
+            )
+
+            # Display the KDE plot
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No data available for the selected models and maturity.")
+    else:
+        st.warning("Please select at least one model and a maturity to proceed.")
