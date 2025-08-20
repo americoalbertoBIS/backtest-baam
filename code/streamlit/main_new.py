@@ -1841,50 +1841,59 @@ with tab_simulation_comparison:
             # Row 2: Execution Date-Specific Distributions (KDE)
             st.subheader("Execution Date-Specific Simulation Distributions")
 
-            # Dropdown to select an execution date
-            available_execution_dates = combined_data["ExecutionDate"].unique()
-            selected_execution_date = st.selectbox(
-                "Select Execution Date",
-                sorted(available_execution_dates),
-                key="simulation_comparison_execution_date_selector"
+            # Text input for selecting an execution date
+            available_execution_dates = sorted(combined_data["ExecutionDate"].unique())
+            default_execution_date = available_execution_dates[-1]  # Default to the latest execution date
+            selected_execution_date_str = st.text_input(
+                "Enter Execution Date (format: YYYY-MM-DD)",
+                value=default_execution_date,  # Default value
+                key="simulation_comparison_execution_date_input"
             )
 
-            # Filter the data for the selected execution date
-            execution_specific_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
+            # Validate the entered execution date
+            try:
+                selected_execution_date = pd.to_datetime(selected_execution_date_str, format="%Y-%m-%d")
+                if selected_execution_date not in available_execution_dates:
+                    st.warning(f"The entered execution date {selected_execution_date_str} is not in the available range.")
+                else:
+                    # Filter the data for the selected execution date
+                    execution_specific_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
 
-            # Plot KDE graphs for each model
-            fig = go.Figure()
+                    # Plot KDE graphs for each model
+                    fig = go.Figure()
 
-            for model in selected_models:
-                model_data = execution_specific_data[execution_specific_data["Model"] == model]
+                    for model in selected_models:
+                        model_data = execution_specific_data[execution_specific_data["Model"] == model]
 
-                # Add KDE line for the model
-                if not model_data.empty:
-                    # Calculate KDE using scipy.stats.gaussian_kde
-                    kde = gaussian_kde(model_data["AnnualReturn"])
-                    x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
-                    y_kde = kde(x_range)
+                        # Add KDE line for the model
+                        if not model_data.empty:
+                            # Calculate KDE using scipy.stats.gaussian_kde
+                            kde = gaussian_kde(model_data["AnnualReturn"])
+                            x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
+                            y_kde = kde(x_range)
 
-                    # Add KDE line to the plot
-                    fig.add_trace(go.Scatter(
-                        x=x_range,
-                        y=y_kde,
-                        mode="lines",
-                        name=f"{model} KDE",
-                        line=dict(width=2)
-                    ))
+                            # Add KDE line to the plot
+                            fig.add_trace(go.Scatter(
+                                x=x_range,
+                                y=y_kde,
+                                mode="lines",
+                                name=f"{model} KDE",
+                                line=dict(width=2)
+                            ))
 
-            # Update layout
-            fig.update_layout(
-                title=f"Simulation Distributions by Model (Execution Date: {selected_execution_date})",
-                xaxis_title="Annual Return",
-                yaxis_title="Density",
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                template="plotly_white"
-            )
+                    # Update layout
+                    fig.update_layout(
+                        title=f"Simulation Distributions by Model (Execution Date: {selected_execution_date_str})",
+                        xaxis_title="Annual Return",
+                        yaxis_title="Density",
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                        template="plotly_white"
+                    )
 
-            # Display the KDE plot
-            st.plotly_chart(fig, use_container_width=True)
+                    # Display the KDE plot
+                    st.plotly_chart(fig, use_container_width=True)
+            except ValueError:
+                st.error("Invalid date format. Please enter the date in the format YYYY-MM-DD.")
         else:
             st.warning("No data available for the selected models and maturity.")
     else:
