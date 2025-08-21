@@ -6,6 +6,9 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from datetime import datetime
+from scipy.stats import gaussian_kde
+import numpy as np
+import plotly.graph_objects as go
 
 # Helper Functions
 def load_data(folder_path, subfolder, model, file_name):
@@ -125,7 +128,7 @@ def load_and_cache_data(models, yields_folder_path, include_benchmark, file_name
 st.set_page_config(layout="wide", page_title="Backtesting Results Dashboard")
 
 # Sidebar: Country Selection
-st.sidebar.header("Configuration")
+st.sidebar.header("Backtesting results dashboard")
 countries = ["US", "EA", "UK"]
 selected_country = st.sidebar.selectbox("Select Country", countries, index=0)
 
@@ -139,27 +142,27 @@ target_variables = ["beta1", "beta2", "beta3"]
 
 # Tabs for Out-of-Sample and In-Sample Metrics
 tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_simulation_comparison = st.tabs(
-    ["Factors overview","Out-of-Sample Model Comparison", "In-Sample Model Specifics", "Simulations", 
-     "Yields overview", "Yields Backtesting", "Yields Simulations", "Returns", "Returns forward looking distributions"]
+    ["Factors backtesting overview","Factors out-of-sample metrics", "Factors in-sample metrics", "Factors simulations analysis", 
+     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", "Returns backtesting overview", "Returns forward looking distributions"]
 )
 
 with tab_factors:
-    st.title("Actuals vs Predictions for Factors")
+    st.title("Actuals vs predictions for factors")
 
     # Create a 3-column layout for the plots
-    st.subheader("Plots: Actuals vs Predictions")
+    #st.subheader("Plots: Actuals vs Predictions")
     cols = st.columns(3)
 
     # Loop through all factors
     for idx, (col, target_variable) in enumerate(zip(cols, target_variables)):  # target_variables = ["beta1", "beta2", "beta3"]
         with col:
-            st.subheader(f"{target_variable}: Actuals vs Predictions")
+            st.subheader(f"{target_variable}")
             combined_data = []
 
             # Dropdown for selecting models (specific to this factor)
-            st.subheader("Model Selection")
+            #st.subheader("Model Selection")
             selected_models = st.multiselect(
-                f"Select Models for {target_variable} (Max 3)",
+                f"Select models (Max 3)",
                 models,  # Use the list of available models
                 default=models[:1],  # Default to the first model
                 key=f"model_selector_{target_variable}_{idx}"  # Unique key for each factor
@@ -171,14 +174,14 @@ with tab_factors:
                 selected_models = selected_models[:3]  # Limit to the first 3 models
 
             # Date selectors for this specific panel
-            st.subheader("Filter by Date Range")
+            #st.subheader("Filter by Date Range")
             min_date = datetime.strptime("1950-01-01", "%Y-%m-%d").date()
             max_date = datetime.strptime("2030-12-31", "%Y-%m-%d").date()
 
             date_cols = st.columns(2)
             with date_cols[0]:
                 start_date = st.date_input(
-                    f"Start Date for {target_variable}",
+                    f"Start date for",
                     value=min_date,
                     min_value=min_date,
                     max_value=max_date,
@@ -186,7 +189,7 @@ with tab_factors:
                 )
             with date_cols[1]:
                 end_date = st.date_input(
-                    f"End Date for {target_variable}",
+                    f"End date",
                     value=max_date,
                     min_value=min_date,
                     max_value=max_date,
@@ -285,10 +288,10 @@ with tab_factors:
 
                     # Update layout
                     fig.update_layout(
-                        title=f"{target_variable}: Forecasted vs Actual",
-                        xaxis_title="Forecast Date",
-                        yaxis_title=f"{target_variable}",
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                        #title=f"{target_variable}: Forecasted vs Actual",
+                        #xaxis_title="Forecast Date",
+                        #yaxis_title=f"{target_variable}",
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.6, xanchor="center", x=0.5),
                         template="plotly_white"
                     )
 
@@ -299,7 +302,7 @@ with tab_factors:
 
 # Out-of-Sample Model Comparison Tab
 with tab_out_of_sample:
-    st.title("Out-of-Sample Model Comparison")
+    st.title("Out-of-sample model comparison")
 
     # Determine the date range for the data
     all_dates = []
@@ -322,16 +325,16 @@ with tab_out_of_sample:
         max_date = pd.to_datetime("2025-12-31")  # Default fallback
 
     # Create columns for Default RMSE by Horizon (First Row)
-    st.subheader("Default RMSE by Horizon (Full Sample)")
+    st.subheader("RMSE by forecasting horizon (full sample)")
     cols = st.columns(3)
     selected_models_per_beta = {}  # To store selected models for each beta
     for col, target_variable in zip(cols, target_variables):
         with col:
-            st.write(f"Results for {target_variable}")
+            st.subheader(f"{target_variable}")
             
             # Dropdown for selecting models specific to this beta (factor)
             selected_models = st.multiselect(
-                f"Select Models for {target_variable}", 
+                f"Select models", 
                 models, 
                 default=models[:1],
                 key=f"model_selector_{target_variable}"  # Unique key for each beta
@@ -354,7 +357,7 @@ with tab_out_of_sample:
                     y="rmse",
                     color="Model",
                     markers=True,
-                    title=f"Default RMSE by Horizon ({target_variable})",
+                    title=f"{target_variable}",
                     labels={"rmse": "RMSE", "Horizon": "Horizon"},
                 )
                 fig.update_layout(
@@ -371,11 +374,11 @@ with tab_out_of_sample:
                 st.warning(f"No data available for Default RMSE ({target_variable})")
 
     # Date pickers for Dynamic RMSE by Horizon (Placed Under the First Row)
-    st.subheader("Dynamic RMSE by Horizon (From Selected Date Range)")
+    st.subheader("RMSE by forecasting horizon (from selected date range)")
     cols = st.columns(2)
     with cols[0]:
         dynamic_start_date = st.date_input(
-            "Select Start Date for Dynamic RMSE by Horizon",
+            "Select start date",
             value=min_date,  # Default to the earliest date
             min_value=min_date,
             max_value=max_date,
@@ -383,7 +386,7 @@ with tab_out_of_sample:
         )
     with cols[1]:
         dynamic_end_date = st.date_input(
-            "Select End Date for Dynamic RMSE by Horizon",
+            "Select end date",
             value=max_date,  # Default to the latest date
             min_value=min_date,
             max_value=max_date,
@@ -414,7 +417,7 @@ with tab_out_of_sample:
                     y="RMSE",
                     color="Model",
                     markers=True,
-                    title=f"Dynamic RMSE by Horizon ({target_variable})",
+                    title=f"{target_variable}",
                     labels={"Horizon": "Horizon", "RMSE": "RMSE"},
                 )
                 fig.update_layout(
@@ -431,11 +434,11 @@ with tab_out_of_sample:
                 st.warning(f"No data available for Dynamic RMSE ({target_variable})")
 
     # Global Date Pickers for RMSE by Execution Date (Placed Above the Last Row)
-    st.subheader("RMSE by Execution Date (From Selected Date Range)")
+    st.subheader("RMSE by execution date (from selected date range)")
     cols = st.columns(2)
     with cols[0]:
         execution_start_date = st.date_input(
-            "Select Start Date for RMSE by Execution Date",
+            "Select start date",
             value=min_date,  # Default to the earliest date
             min_value=min_date,
             max_value=max_date,
@@ -443,7 +446,7 @@ with tab_out_of_sample:
         )
     with cols[1]:
         execution_end_date = st.date_input(
-            "Select End Date for RMSE by Execution Date",
+            "Select end date",
             value=max_date,  # Default to the latest date
             min_value=min_date,
             max_value=max_date,
@@ -472,7 +475,7 @@ with tab_out_of_sample:
                     x="ExecutionDate",
                     y="rmse",
                     color="Model",
-                    title=f"RMSE by Execution Date ({target_variable})",
+                    title=f"{target_variable}",
                     labels={"rmse": "RMSE", "ExecutionDate": "Execution Date"},
                 )
                 fig.update_layout(
@@ -487,9 +490,10 @@ with tab_out_of_sample:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"No data available for RMSE by Execution Date ({target_variable})")
+                
 # In-Sample Model Specifics Tab
 with tab_in_sample:
-    st.title("In-Sample Model Specifics")
+    st.title("Factors in-sample model metrics")
 
     # Load all in-sample metrics data to determine the date range
     all_data = []
@@ -509,7 +513,7 @@ with tab_in_sample:
 
     # Start Date Filter
     start_date = st.date_input(
-        "Select Start Date to Filter Data",
+        "Select start date",
         value=min_date,  # Default to the earliest date in the data
         min_value=min_date,
         max_value=max_date,
@@ -521,8 +525,9 @@ with tab_in_sample:
     selected_models = {}
     for col, target_variable in zip(cols, target_variables):
         with col:
+            st.subheader(f"{target_variable}")
             selected_models[target_variable] = st.selectbox(
-                f"Select Model for {target_variable}",
+                f"Select model",
                 models,
                 index=0,
                 key=f"model_selector_insample_{target_variable}"
@@ -564,13 +569,13 @@ with tab_in_sample:
                             filtered_data,
                             x="ExecutionDate",
                             y="value",
-                            title=f"Adjusted R-Squared ({target_variable})",
+                            title=f"{target_variable}",
                             labels={"ExecutionDate": "Execution Date", "value": "Adjusted R-Squared"},
                         )
                         st.plotly_chart(fig, use_container_width=True)
         else:
             # Plot coefficients and overlay p-values for the other indicators
-            st.subheader(f"Indicator: {row}")
+            st.subheader(f"Time varying coefficient for {row}")
             cols = st.columns(3)
             for col, target_variable in zip(cols, target_variables):
                 with col:
@@ -590,27 +595,27 @@ with tab_in_sample:
                                     x_col="ExecutionDate",
                                     y1_col="coefficient",
                                     y2_col="p_value",
-                                    title=f"{row} Coefficient and P-Value ({target_variable})",
+                                    title=f"",
                                     y1_label="Coefficient",
                                     y2_label="P-Value"
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
 
 with tab_simulations:
-    st.title("Simulations Analysis: Heatmaps, Fan Chart, and Distributions")
+    st.title("Factors simulations analysis: heatmaps, fan chart, and distributions")
 
     # Dropdown to select a specific model and beta
     col1, col2 = st.columns(2)
     with col1:
         selected_model = st.selectbox(
-            "Select Model",
+            "Select model",
             models,
             index=0,
             key="simulation_model_selector"
         )
     with col2:
         selected_beta = st.selectbox(
-            "Select Beta",
+            "Select factor",
             target_variables,
             index=0,
             key="simulation_beta_selector"
@@ -638,7 +643,7 @@ with tab_simulations:
         col3, col4 = st.columns(2)
         with col3:
             start_date = st.date_input(
-                "Select Start Date for Execution Date",
+                "Select start date",
                 value=min_date,
                 min_value=min_date,
                 max_value=max_date,
@@ -646,7 +651,7 @@ with tab_simulations:
             )
         with col4:
             end_date = st.date_input(
-                "Select End Date for Execution Date",
+                "Select end date",
                 value=max_date,
                 min_value=min_date,
                 max_value=max_date,
@@ -660,14 +665,14 @@ with tab_simulations:
         ]
 
         # --- Visualization 1: Horizon–Origin Heatmaps ---
-        st.subheader("Horizon–Origin Heatmaps (HOP)")
+        st.subheader("Horizon–Origin heatmap (HOP)")
 
         # Median Forecasts
         median_forecasts = filtered_simulations.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.5).unstack()
         fig = px.imshow(
             median_forecasts.T,#.sort_index(ascending=False),  # Transpose to align axes
-            labels={"x": "Execution Date", "y": "Horizon", "color": "Median Forecast"},
-            title="Horizon–Origin Heatmap: Median Factor Forecasts",
+            labels={"x": "Execution Date", "y": "Horizon", "color": "Median forecast"},
+            title="Horizon–Origin Heatmap: median factor forecasts",
             color_continuous_scale="RdBu",
             origin='lower'
         )
@@ -680,7 +685,7 @@ with tab_simulations:
         fig = px.imshow(
             pi_width.T.sort_index(ascending=False),  # Transpose to align axes
             labels={"x": "Execution Date", "y": "Horizon", "color": "90% PI Width"},
-            title="Horizon–Origin Heatmap: 90% Prediction Interval Width",
+            title="Horizon–Origin heatmap: 90% prediction interval (PI) width",
             color_continuous_scale="RdBu",
             origin='lower'
         )
@@ -693,14 +698,14 @@ with tab_simulations:
         fig = px.imshow(
             simulated_cdf.T.sort_index(ascending=False),  # Transpose to align axes
             labels={"x": "Execution Date", "y": "Horizon", "color": "PIT"},
-            title="Horizon–Origin Heatmap: PIT",
+            title="Horizon–Origin heatmap: probability integral transform (PIT)",
             color_continuous_scale="RdBu",
             origin='lower'
         )
         st.plotly_chart(fig, use_container_width=True)
 
         # --- Visualization 2: Actuals with Fan Chart ---
-        st.subheader("Actuals and Simulations with Fan Chart")
+        st.subheader("Actuals and simulations")
 
         # Calculate percentiles (5th, 50th, 95th) for the fan chart
         percentiles = filtered_simulations.groupby("ExecutionDate")["SimulatedValue"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
@@ -753,14 +758,14 @@ with tab_simulations:
 
         # Update layout
         fig.update_layout(
-            title="Actuals and Simulations with Fan Chart",
+            #title="Actuals and Simulations with Fan Chart",
             xaxis_title="Execution Date",
             yaxis_title="Value",
             legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
         )
         st.plotly_chart(fig, use_container_width=True)
         # --- Visualization: Historical Actuals and Fan Chart ---
-        st.subheader("Historical Actuals and Projections")
+        st.subheader("Historical actuals and projections")
 
         # Determine the available execution dates
         available_execution_dates = sorted(simulations_data["ExecutionDate"].dropna().unique())  # Drop NaN values if any
@@ -770,7 +775,7 @@ with tab_simulations:
             # Add a text input for selecting an ExecutionDate as a string
             default_date = available_execution_dates_str[-1]  # Default to the latest available date
             selected_execution_date_str = st.text_input(
-                "Enter Execution Date (format: YYYY-MM)",
+                "Enter execution date (format: YYYY-MM)",
                 value=default_date  # Default value
             )
 
@@ -806,7 +811,7 @@ with tab_simulations:
 
                     # --- Left Column: Historical Actuals ---
                     with col1:
-                        st.subheader("Historical Actuals")
+                        st.subheader("Actual")
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(
                             x=historical_actuals.index,
@@ -830,7 +835,7 @@ with tab_simulations:
                             )
 
                         fig.update_layout(
-                            title="Historical Actuals",
+                            #title="Actual",
                             xaxis_title="Forecast Date",
                             yaxis_title="Value",
                             legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
@@ -839,7 +844,7 @@ with tab_simulations:
 
                     # --- Right Column: Projections and Prediction Intervals ---
                     with col2:
-                        st.subheader("Projections and Prediction Intervals")
+                        st.subheader("Projections and prediction intervals vs actual")
 
                         if projections_data is not None and not projections_data.empty:
                             fig = go.Figure()
@@ -896,7 +901,7 @@ with tab_simulations:
                                 )
 
                             fig.update_layout(
-                                title=f"Projections and Prediction Intervals from Execution Date: {selected_execution_date_str}",
+                                #title=f"Projections and Prediction Intervals from Execution Date: {selected_execution_date_str}",
                                 xaxis_title="Forecast Date",
                                 yaxis_title="Value",
                                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
@@ -908,8 +913,9 @@ with tab_simulations:
                 st.error("Invalid date format. Please enter the date in the format YYYY-MM.")
         else:
             st.warning("No execution dates available for the selected filters.")
+            
         # --- Visualization 3: Horizon-Specific Simulated Distributions ---
-        st.subheader("Horizon-Specific Simulated Distributions vs Actuals")
+        st.subheader("Horizon-specific simulated distributions vs actual")
 
         # Use all available forecast dates for the calendar date picker
         available_forecast_dates = sorted(filtered_simulations["ForecastDate"].unique())
@@ -919,7 +925,7 @@ with tab_simulations:
 
             # Calendar-based date picker for ForecastDate
             selected_forecast_date = st.date_input(
-                "Select Forecast Date to Analyze",
+                "Select forecast date",
                 value=default_date,  # Default to January 2025 or the first available date
                 min_value=available_forecast_dates[0],
                 max_value=available_forecast_dates[-1],
@@ -941,7 +947,7 @@ with tab_simulations:
                 unique_horizons = sorted(simulations_for_date["Horizon"].unique())
                 default_horizons = [h for h in [6, 12, 24, 48, 60] if h in unique_horizons]  # Default to specific horizons if available
                 selected_horizons = st.multiselect(
-                    "Select Horizons to Plot (Max 5)",
+                    "Select horizons to plot (Max 5)",
                     unique_horizons,
                     default=default_horizons,  # Use the default horizons if available
                     key="simulation_horizon_selector"
@@ -985,7 +991,7 @@ with tab_simulations:
         st.warning("No data available for the selected model and beta.")
 
 with tab_yields_1:
-    st.title("Yields Backtesting")
+    st.title("Actuals vs predictions for yields")
 
     # Dynamically update the folder path for yields based on the selected country
     yields_folder_path = os.path.join(base_folder, selected_country, "yields")
@@ -1009,34 +1015,38 @@ with tab_yields_1:
         available_maturities = []
 
     # Dropdown for selecting models
-    st.subheader("Model Selection")
-    estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
-    selected_models_yields = st.multiselect(
-        "Select Models for Yields (Max 3)",
-        estimated_models_with_labels,
-        default=estimated_models[:1],  # Default to the first estimated model
-        key="model_selector_yields"
-    )
-
-    # Restrict to a maximum of 3 models
-    if len(selected_models_yields) > 3:
-        st.warning("Please select up to 3 models for Yields. Only the first 3 models will be used.")
-        selected_models_yields = selected_models_yields[:3]  # Limit to the first 3 models
-
-    # Dropdown for selecting a single maturity
-    st.subheader("Maturity Selection")
-    if available_maturities.size > 0:
-        selected_maturity = st.selectbox(
-            "Select a Maturity to Display",
-            available_maturities.tolist(),
-            key="selected_maturity_yields"
+    #st.subheader("Model Selection")
+    
+    col_1, col_2 = st.columns(2)
+    with col_1:
+        estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
+        selected_models_yields = st.multiselect(
+            "Select models (Max 3)",
+            estimated_models_with_labels,
+            default=estimated_models[:1],  # Default to the first estimated model
+            key="model_selector_yields"
         )
-    else:
-        st.warning("No maturities available. Please check the data.")
-        selected_maturity = None
+
+        # Restrict to a maximum of 3 models
+        if len(selected_models_yields) > 3:
+            st.warning("Please select up to 3 models for Yields. Only the first 3 models will be used.")
+            selected_models_yields = selected_models_yields[:3]  # Limit to the first 3 models
+
+    with col_2:
+        # Dropdown for selecting a single maturity
+        #st.subheader("Maturity Selection")
+        if available_maturities.size > 0:
+            selected_maturity = st.selectbox(
+                "Select a Maturity to Display",
+                available_maturities.tolist(),
+                key="selected_maturity_yields"
+            )
+        else:
+            st.warning("No maturities available. Please check the data.")
+            selected_maturity = None
 
     # Date selectors for yields (side by side)
-    st.subheader("Filter by Date Range")
+    #st.subheader("Filter by Date Range")
     min_date_yields = datetime.strptime("1950-01-01", "%Y-%m-%d").date()
     max_date_yields = datetime.strptime("2030-12-31", "%Y-%m-%d").date()
 
@@ -1044,7 +1054,7 @@ with tab_yields_1:
     date_cols_yields = st.columns(2)
     with date_cols_yields[0]:
         start_date_yields = st.date_input(
-            "Start Date for Yields",
+            "Start date",
             value=min_date_yields,
             min_value=min_date_yields,
             max_value=max_date_yields,
@@ -1052,7 +1062,7 @@ with tab_yields_1:
         )
     with date_cols_yields[1]:
         end_date_yields = st.date_input(
-            "End Date for Yields",
+            "End date",
             value=max_date_yields,
             min_value=min_date_yields,
             max_value=max_date_yields,
@@ -1165,7 +1175,7 @@ with tab_yields_1:
 
             # Update layout
             fig_yields.update_layout(
-                title=f"Yields: Forecasted vs Actual (Maturity: {selected_maturity})",
+                #title=f"Yields: Forecasted vs Actual (Maturity: {selected_maturity})",
                 xaxis_title="Forecast Date",
                 yaxis_title="Yields",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
@@ -1178,7 +1188,7 @@ with tab_yields_1:
             st.warning(f"No data available for Yields (Maturity: {selected_maturity}).")
 
 with tab_yields:
-    st.title("Yields Backtesting: Out-of-Sample Metrics")
+    st.title("Out-of-sample model comparison")
 
     # Dynamically update the folder path for yields based on the selected country
     yields_folder_path = os.path.join(base_folder, selected_country, "yields")
@@ -1201,31 +1211,34 @@ with tab_yields:
         st.warning("Sample file not found. Cannot determine available maturities.")
         available_maturities = []
 
-    # Dropdown for selecting models
-    st.subheader("Model Selection")
-    estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
-    selected_models = st.multiselect(
-        "Select Models to Compare",
-        estimated_models_with_labels,
-        default=estimated_models[:1],  # Default to the first estimated model
-        key="selected_models_yields"
-    )
-
-    # Check if the benchmark model is selected
-    include_benchmark = f"{benchmark_model} (Benchmark)" in selected_models
-
-    # Dropdown for selecting maturities
-    st.subheader("Maturity Selection")
-    if available_maturities.size > 0:
-        selected_maturities = st.multiselect(
-            "Select Maturities to Include",
-            available_maturities.tolist(),
-            default=available_maturities[:1].tolist(),
-            key="selected_maturities"
+    tab_yields_filter = st.columns(2)
+    with tab_yields_filter[0]:
+        # Dropdown for selecting models
+        #st.subheader("Model Selection")
+        estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
+        selected_models = st.multiselect(
+            "Select models",
+            estimated_models_with_labels,
+            default=estimated_models[:1],  # Default to the first estimated model
+            key="selected_models_yields"
         )
-    else:
-        st.warning("No maturities available. Please check the data.")
-        selected_maturities = []
+
+        # Check if the benchmark model is selected
+        include_benchmark = f"{benchmark_model} (Benchmark)" in selected_models
+
+    with tab_yields_filter[1]:
+        # Dropdown for selecting maturities
+        #st.subheader("Maturity Selection")
+        if available_maturities.size > 0:
+            selected_maturities = st.multiselect(
+                "Select maturities to plot",
+                available_maturities.tolist(),
+                default=available_maturities[:1].tolist(),
+                key="selected_maturities"
+            )
+        else:
+            st.warning("No maturities available. Please check the data.")
+            selected_maturities = []
 
     # Cache and load data for RMSE by Horizon
     #rmse_horizon_data = load_and_cache_data(selected_models, yields_folder_path, include_benchmark, "outofsample_metrics_by_horizon.csv")
@@ -1239,17 +1252,15 @@ with tab_yields:
     max_date = max(all_dates) if all_dates else pd.to_datetime("2025-12-31")
 
     # Loop over maturities and create plots
-    # Loop over maturities and create two rows of graphs for each maturity
-    # Loop over maturities and create two rows of graphs for each maturity
     for maturity in selected_maturities:
-        st.subheader(f"Maturity: {maturity}")
-
+        st.subheader(f"{maturity} maturity")
+        st.subheader("RMSE for the full sample")
         # --- First Row: Default RMSE by Execution Date and Horizon ---
         col1, col2 = st.columns(2)
 
         # Left Column: RMSE by Execution Date (Full History)
         with col1:
-            st.write(f"RMSE by Execution Date for {maturity} (Full History)")
+            #st.write(f"RMSE by execution date (full sample)")
             execution_data = load_and_cache_data(
                 selected_models, yields_folder_path, include_benchmark, "outofsample_metrics_by_execution_date.csv"
             )
@@ -1272,11 +1283,11 @@ with tab_yields:
                     x="ExecutionDate",
                     y="rmse",
                     color="Model",
-                    title=f"RMSE by Execution Date ({maturity})",
+                    title=f"RMSE by execution date",
                     labels={"rmse": "RMSE", "ExecutionDate": "Execution Date"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1284,7 +1295,7 @@ with tab_yields:
 
         # Right Column: RMSE by Horizon (Full History)
         with col2:
-            st.write(f"RMSE by Horizon for {maturity} (Full History)")
+            #st.write(f"RMSE by Horizon for {maturity} (Full History)")
             horizon_data = load_and_cache_data(
                 selected_models, yields_folder_path, include_benchmark, "outofsample_metrics_by_horizon.csv"
             )
@@ -1306,21 +1317,22 @@ with tab_yields:
                     x="Horizon",
                     y="rmse",
                     color="Model",
-                    title=f"RMSE by Horizon ({maturity})",
+                    title=f"RMSE by horizon",
                     labels={"rmse": "RMSE", "Horizon": "Horizon"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"No data available for RMSE by Horizon for {maturity}.")
 
         # --- Second Row: Dynamic RMSE by Execution Date and Horizon (Custom Date Range) ---
+        st.subheader("RMSE for selected date range")
         col1, col2 = st.columns(2)
         with col1:
             dynamic_start_date = st.date_input(
-                f"Select Start Date for {maturity}",
+                f"Select start date",
                 value=min_date,
                 min_value=min_date,
                 max_value=max_date,
@@ -1328,7 +1340,7 @@ with tab_yields:
             )
         with col2:
             dynamic_end_date = st.date_input(
-                f"Select End Date for {maturity}",
+                f"Select end date",
                 value=max_date,
                 min_value=min_date,
                 max_value=max_date,
@@ -1340,7 +1352,7 @@ with tab_yields:
 
         # Dynamic RMSE by Execution Date
         with col1:
-            st.write(f"Dynamic RMSE by Execution Date for {maturity} (Custom Date Range)")
+            #st.write(f"Dynamic RMSE by Execution Date for {maturity} (Custom Date Range)")
 
             forecasts_data = load_and_cache_data(
                 selected_models, yields_folder_path, include_benchmark, "forecasts.csv"
@@ -1379,11 +1391,11 @@ with tab_yields:
                     x="ExecutionDate",
                     y="RMSE",
                     color="Model",
-                    title=f"Dynamic RMSE by Execution Date ({maturity})",
+                    title=f"RMSE by execution date",
                     labels={"ExecutionDate": "Execution Date", "RMSE": "RMSE"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1391,7 +1403,7 @@ with tab_yields:
 
         # Dynamic RMSE by Horizon
         with col2:
-            st.write(f"Dynamic RMSE by Horizon for {maturity} (Custom Date Range)")
+            #st.write(f"Dynamic RMSE by Horizon for {maturity} (Custom Date Range)")
 
             combined_data = []
             for model, data in forecasts_data.items():
@@ -1418,38 +1430,40 @@ with tab_yields:
                     x="Horizon",
                     y="RMSE",
                     color="Model",
-                    title=f"Dynamic RMSE by Horizon ({maturity})",
+                    title=f"RMSE by horizon",
                     labels={"Horizon": "Horizon", "RMSE": "RMSE"}
                 )
                 fig.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"No data available for Dynamic RMSE by Horizon for {maturity}.")
 
 with tab_sim_yields:
-    st.title("Simulated Yields Analysis: Full-Sample Heatmaps and Fan Chart")
+    st.title("Yields simulations analysis: heatmaps and fan chart")
 
-    # Dropdown for selecting model
-    st.subheader("Model Selection")
-    selected_model = st.selectbox(
-        "Select Model for Simulated Yields",
-        estimated_models_with_labels,
-        key="sim_yields_model_selector"  # Unique key for this dropdown
-    )
-
-    # Dropdown for selecting maturity
-    st.subheader("Maturity Selection")
-    if available_maturities.size > 0:
-        selected_maturity = st.selectbox(
-            "Select Maturity for Simulated Yields",
-            available_maturities.tolist(),
-            key="sim_yields_maturity_selector"  # Unique key for this dropdown
+    filter_cols1, filter_cols2 = st.columns(2)
+    with filter_cols1:
+        # Dropdown for selecting model
+        #st.subheader("Model Selection")
+        selected_model = st.selectbox(
+            "Select model",
+            estimated_models_with_labels,
+            key="sim_yields_model_selector"  # Unique key for this dropdown
         )
-    else:
-        st.warning("No maturities available for simulations.")
-        selected_maturity = None
+    with filter_cols2:
+        # Dropdown for selecting maturity
+        #st.subheader("Maturity Selection")
+        if available_maturities.size > 0:
+            selected_maturity = st.selectbox(
+                "Select maturity",
+                available_maturities.tolist(),
+                key="sim_yields_maturity_selector"  # Unique key for this dropdown
+            )
+        else:
+            st.warning("No maturities available for simulations.")
+            selected_maturity = None
 
     # Load and concatenate all parquet files for the selected maturity
     if selected_model and selected_maturity:
@@ -1468,32 +1482,32 @@ with tab_sim_yields:
                 required_columns = ["ForecastDate", "SimulatedValue", "Maturity", "SimulationID", "ExecutionDate", "Model", "Horizon"]
                 if all(col in simulations_data.columns for col in required_columns):
                     # --- Visualization 1: Full-Sample Horizon-Origin Heatmap (Median Forecasts) ---
-                    st.subheader("Full-Sample Horizon-Origin Heatmap (Median Forecasts)")
+                    st.subheader("Horizon-Origin heatmap for median forecast")
                     median_forecasts = simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.5).unstack()
                     fig = px.imshow(
                         median_forecasts.T,  # Transpose to align axes
                         labels={"x": "Execution Date", "y": "Horizon", "color": "Median Simulated Yield"},
-                        title="Full-Sample Horizon-Origin Heatmap: Median Simulated Yields",
+                        #title="Full-Sample Horizon-Origin Heatmap: Median Simulated Yields",
                         color_continuous_scale="RdBu",
                         origin="lower"
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
                     # --- Visualization 2: Full-Sample 90% Prediction Interval Width Heatmap ---
-                    st.subheader("Full-Sample Horizon-Origin Heatmap (90% Prediction Interval Width)")
+                    st.subheader("Horizon-Origin heatmap for 90% prediction interval width")
                     pi_width = simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.95).unstack() - \
                                simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.05).unstack()
                     fig = px.imshow(
                         pi_width.T,  # Transpose to align axes
                         labels={"x": "Execution Date", "y": "Horizon", "color": "90% PI Width"},
-                        title="Full-Sample Horizon-Origin Heatmap: 90% Prediction Interval Width",
+                        #title="Full-Sample Horizon-Origin Heatmap: 90% Prediction Interval Width",
                         color_continuous_scale="RdBu",
                         origin="lower"
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
                     # --- Visualization 3: Full-Sample PIT Heatmap ---
-                    st.subheader("Full-Sample Horizon-Origin Heatmap (PIT)")
+                    st.subheader("Horizon-Origin heatmap for probability integral transform (PIT)")
                     # Mock actuals for PIT (replace this with real actuals if available)
                     actuals = simulations_data.groupby("ForecastDate")["SimulatedValue"].mean()
                     simulated_cdf = simulations_data.groupby(["ExecutionDate", "Horizon"]).apply(
@@ -1502,14 +1516,14 @@ with tab_sim_yields:
                     fig = px.imshow(
                         simulated_cdf.T,  # Transpose to align axes
                         labels={"x": "Execution Date", "y": "Horizon", "color": "PIT"},
-                        title="Full-Sample Horizon-Origin Heatmap: PIT",
+                        #title="Full-Sample Horizon-Origin Heatmap: PIT",
                         color_continuous_scale="RdBu",
                         origin="lower"
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
                     # --- Visualization 4: Actuals and Simulations with Fan Chart ---
-                    st.subheader("Actuals and Simulations with Fan Chart")
+                    st.subheader("Actuals and simulations with fan chart")
 
                     # Mock actuals data (replace with real actuals if available)
                     actuals = simulations_data.groupby("ForecastDate")["SimulatedValue"].mean()  # Mocked actuals
@@ -1566,7 +1580,7 @@ with tab_sim_yields:
 
                     # Update layout
                     fig.update_layout(
-                        title="Actuals and Simulations with Fan Chart",
+                        #title="Actuals and Simulations with Fan Chart",
                         xaxis_title="Execution Date",
                         yaxis_title="Value",
                         legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
@@ -1583,15 +1597,17 @@ with tab_sim_yields:
 
 
 with tab_returns:
-    st.title("Returns Analysis: VaR, CVaR, Observed, and Expected Returns")
+    st.title("Returns analysis: VaR, CVaR, observed and expected returns")
 
+    returns_filters = st.columns(3)
     # Dropdown for selecting model
-    st.subheader("Model Selection")
-    selected_model = st.selectbox(
-        "Select Model for Returns Analysis",
-        estimated_models,  # Use the list of available models
-        key="returns_model_selector"  # Unique key for this dropdown
-    )
+    #st.subheader("Model Selection")
+    with returns_filters[0]:
+        selected_model = st.selectbox(
+            "Select Model for Returns Analysis",
+            estimated_models,  # Use the list of available models
+            key="returns_model_selector"  # Unique key for this dropdown
+        )
 
     # Load the annual metrics CSV for the selected model
     returns_folder_path = os.path.join(base_folder, selected_country, "returns", "estimated_returns", selected_model)
@@ -1599,24 +1615,24 @@ with tab_returns:
 
     if os.path.exists(annual_metrics_file):
         metrics_df = pd.read_csv(annual_metrics_file)
-
-        # Dropdown for selecting maturity
-        st.subheader("Maturity Selection")
-        available_maturities = metrics_df["Maturity (Years)"].unique()
-        selected_maturity = st.selectbox(
-            "Select Maturity (Years)",
-            sorted(available_maturities),
-            key="returns_maturity_selector"  # Unique key for this dropdown
-        )
-
-        # Dropdown for selecting horizon
-        st.subheader("Horizon Selection")
-        available_horizons = metrics_df["Horizon (Years)"].unique()
-        selected_horizon = st.selectbox(
-            "Select Horizon (Years)",
-            sorted(available_horizons),
-            key="returns_horizon_selector"  # Unique key for this dropdown
-        )
+        with returns_filters[1]:
+            # Dropdown for selecting maturity
+            #st.subheader("Maturity Selection")
+            available_maturities = metrics_df["Maturity (Years)"].unique()
+            selected_maturity = st.selectbox(
+                "Select maturity (years)",
+                sorted(available_maturities),
+                key="returns_maturity_selector"  # Unique key for this dropdown
+            )
+        with returns_filters[2]:
+            # Dropdown for selecting horizon
+            #st.subheader("Horizon Selection")
+            available_horizons = metrics_df["Horizon (Years)"].unique()
+            selected_horizon = st.selectbox(
+                "Select horizon (years)",
+                sorted(available_horizons),
+                key="returns_horizon_selector"  # Unique key for this dropdown
+            )
 
         # Filter the DataFrame for the selected maturity and horizon
         filtered_df = metrics_df[
@@ -1628,7 +1644,7 @@ with tab_returns:
         # Check for duplicates
         duplicate_rows = filtered_df[filtered_df.duplicated(subset=["Execution Date", "Metric"], keep=False)]
         if not duplicate_rows.empty:
-            st.warning("Duplicate rows detected. Aggregating duplicates by taking the mean.")
+            #st.warning("Duplicate rows detected. Aggregating duplicates by taking the mean.")
             filtered_df = filtered_df.groupby(["Execution Date", "Metric"], as_index=False)["Value"].mean()
 
         # Pivot the data to align metrics by execution date
@@ -1678,7 +1694,7 @@ with tab_returns:
                 y=pivot_df["CVaR"],
                 mode="lines",
                 name="CVaR (Tail Average)",
-                line=dict(color="orange") # , dash="dot"
+                line=dict(color="#aa322f") # , dash="dot"
             ))
 
             # Highlight breaches where Observed Annual Return < VaR
@@ -1693,7 +1709,7 @@ with tab_returns:
 
             # Update layout
             fig.update_layout(
-                title=f"VaR, CVaR, Observed, and Expected Returns Across Execution Dates (Horizon={selected_horizon}y, Maturity={selected_maturity}y)",
+                #title=f"VaR, CVaR, Observed, and Expected Returns Across Execution Dates (Horizon={selected_horizon}y, Maturity={selected_maturity}y)",
                 xaxis_title="Execution Date",
                 yaxis_title="Returns",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
@@ -1726,34 +1742,31 @@ def load_model_simulations(model, maturity_folder_path):
     else:
         return pd.DataFrame()  # Return an empty DataFrame if no files are found
 
-
-from scipy.stats import gaussian_kde
-import numpy as np
-import plotly.graph_objects as go
-
 with tab_simulation_comparison:
-    st.title("Simulation Comparison: Distribution Analysis Across Models")
+    st.title("Returns Forward Looking Distributions")
 
-    # Dropdown for selecting models
-    st.subheader("Model Selection")
-    selected_models = st.multiselect(
-        "Select Models to Compare",
-        estimated_models,  # Use the list of available models
-        default=estimated_models[:2],  # Default to the first two models
-        key="simulation_comparison_model_selector"  # Unique key for this dropdown
-    )
-
-    # Dropdown for selecting maturity
-    st.subheader("Maturity Selection")
-    if available_maturities.size > 0:
-        selected_maturity = st.selectbox(
-            "Select Maturity for Simulations",
-            available_maturities.tolist(),
-            key="simulation_comparison_maturity_selector"  # Unique key for this dropdown
+    # Filters: Model and Maturity Selection
+    tab_simulation_comparison_filters = st.columns(2)
+    with tab_simulation_comparison_filters[0]:
+        # Dropdown for selecting models
+        selected_models = st.multiselect(
+            "Select models",
+            estimated_models,  # Use the list of available models
+            default=estimated_models[:2],  # Default to the first two models
+            key="simulation_comparison_model_selector"  # Unique key for this dropdown
         )
-    else:
-        st.warning("No maturities available for simulations.")
-        selected_maturity = None
+
+    with tab_simulation_comparison_filters[1]:
+        # Dropdown for selecting maturity
+        if available_maturities.size > 0:
+            selected_maturity = st.selectbox(
+                "Select maturity",
+                available_maturities.tolist(),
+                key="simulation_comparison_maturity_selector"  # Unique key for this dropdown
+            )
+        else:
+            st.warning("No maturities available for simulations.")
+            selected_maturity = None
 
     # Check if at least one model and a maturity are selected
     if selected_models and selected_maturity:
@@ -1781,8 +1794,8 @@ with tab_simulation_comparison:
         if combined_data:
             combined_data = pd.concat(combined_data, ignore_index=True)
 
-            # Row 1: Time-Series Summary Statistics
-            st.subheader("Time-Series Summary Statistics Comparison")
+            # Time Series Plot
+            st.subheader("Time Series Simulations Distributions")
 
             # Define a color palette for models
             color_palette = ["#3a6bac", "#aa322f", "#eaa121", "#633d83", "#d55b20", "#427f6d", "#784722"]
@@ -1825,7 +1838,6 @@ with tab_simulation_comparison:
 
             # Update layout
             fig_time_series.update_layout(
-                title="Simulation Distributions Comparison Across Models (Time-Series)",
                 xaxis_title="Execution Date",
                 yaxis_title="Annual Return",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
@@ -1835,17 +1847,28 @@ with tab_simulation_comparison:
             # Display the plot
             st.plotly_chart(fig_time_series, use_container_width=True)
 
-            # Row 2: KDE Subplots for Each Horizon (2x3 layout with an additional "All Horizons" plot)
-            st.subheader("KDE Distribution by Horizon and Overall Across Models")
+            # Date Filter for KDE
+            st.subheader("Filter by Execution Date for KDE")
+            available_execution_dates = sorted(combined_data["ExecutionDate"].unique())
+            selected_execution_date = st.selectbox(
+                "Select Execution Date",
+                available_execution_dates,
+                key="simulation_comparison_execution_date_selector"
+            )
+
+            # Filter data for the selected execution date
+            execution_date_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
+
+            # KDE Subplots for Each Horizon
+            st.subheader(f"KDE Distributions for Execution Date: {selected_execution_date}")
 
             # Get unique horizons
-            unique_horizons = sorted(combined_data["Horizon (Years)"].unique())
+            unique_horizons = sorted(execution_date_data["Horizon (Years)"].unique())
 
             # Create a 2x3 grid using Streamlit columns
             rows = []
             n_cols = 3  # Number of columns
             for i in range(0, len(unique_horizons) + 1, n_cols):
-                # Append a new row of columns
                 rows.append(st.columns(n_cols))
 
             # Loop through each horizon and add KDE plots
@@ -1855,7 +1878,7 @@ with tab_simulation_comparison:
 
                 with rows[row_idx][col_idx]:
                     # Filter data for the current horizon
-                    horizon_data = combined_data[combined_data["Horizon (Years)"] == horizon]
+                    horizon_data = execution_date_data[execution_date_data["Horizon (Years)"] == horizon]
 
                     # Create a Plotly figure for the current horizon
                     fig_kde = go.Figure()
@@ -1907,7 +1930,7 @@ with tab_simulation_comparison:
 
                     # Update layout
                     fig_kde.update_layout(
-                        title=f"Horizon {horizon} Years",
+                        title=f"{horizon} years horizon",
                         xaxis_title="Annual Return",
                         yaxis_title="Density",
                         showlegend=True,
@@ -1926,20 +1949,16 @@ with tab_simulation_comparison:
                 # Create a Plotly figure for "All Horizons"
                 fig_all_horizons = go.Figure()
 
-                # Loop through selected models
+                # Add simulated returns for all models
                 for i, model in enumerate(selected_models):
-                    model_data = combined_data[combined_data["Model"] == model]
+                    model_data = execution_date_data[execution_date_data["Model"] == model]
 
                     if not model_data.empty:
-                        # Calculate KDE for all horizons combined
                         kde = gaussian_kde(model_data["AnnualReturn"])
                         x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
                         y_kde = kde(x_range)
 
-                        # Define the color for this model
                         model_color = color_palette[i % len(color_palette)]
-
-                        # Add KDE trace to the figure
                         fig_all_horizons.add_trace(go.Scatter(
                             x=x_range,
                             y=y_kde,
@@ -1947,19 +1966,6 @@ with tab_simulation_comparison:
                             name=f"{model}",
                             line=dict(width=2, color=model_color)
                         ))
-
-                        # Calculate VaR (5th percentile)
-                        var_5 = np.percentile(model_data["AnnualReturn"], 5)
-
-                        # Add vertical line for VaR
-                        fig_all_horizons.add_shape(
-                            type="line",
-                            x0=var_5, x1=var_5,
-                            y0=0, y1=1,
-                            xref="x", yref="paper",
-                            line=dict(color=model_color, width=2, dash="dot"),
-                            name=f"{model} VaR"
-                        )
 
                 # Add vertical line at zero
                 fig_all_horizons.add_shape(
@@ -1973,7 +1979,7 @@ with tab_simulation_comparison:
 
                 # Update layout
                 fig_all_horizons.update_layout(
-                    title="All Horizons",
+                    title="All Horizons (Simulated vs Observed Returns)",
                     xaxis_title="Annual Return",
                     yaxis_title="Density",
                     showlegend=True,
@@ -1983,3 +1989,4 @@ with tab_simulation_comparison:
 
                 # Display the "All Horizons" plot
                 st.plotly_chart(fig_all_horizons, use_container_width=True)
+                
