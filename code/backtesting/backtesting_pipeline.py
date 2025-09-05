@@ -146,18 +146,78 @@ def forecast_values(model, test_data, lagged_beta1, horizons, exogenous_variable
         actual_value = df.loc[forecast_date, target_col] if forecast_date in df.index else np.nan
         
         results.append({
-            "ExecutionDate": execution_date,
-            "ForecastDate": forecast_date,
-            "Horizon": horizon,
-            "Prediction": forecast_value,
-            "Actual": actual_value,
+            "execution_date": execution_date,
+            "forecast_date": forecast_date,
+            "horizon": horizon,
+            "prediction": forecast_value,
+            "actual": actual_value,
         })
 
     return results
 
+def generate_bootstrap_indices(
+    available_dates, num_simulations, max_horizon, 
+    bootstrap_type="iid", block_length=6, half_life=12
+):
+    """
+    Generate bootstrapped indices for different bootstrapping types.
+    """
+    indices = []
+    n = len(available_dates)
+    if bootstrap_type == "iid":
+        for _ in range(num_simulations):
+            indices.append(np.random.choice(available_dates, size=max_horizon, replace=True))
+    elif bootstrap_type == "block":
+        for _ in range(num_simulations):
+            sim_indices = []
+            i = 0
+            while i < max_horizon:
+                start = np.random.randint(0, n - block_length + 1)
+                block = available_dates[start:start+block_length]
+                sim_indices.extend(block)
+                i += block_length
+            indices.append(sim_indices[:max_horizon])
+    elif bootstrap_type == "half_life":
+        weights = np.exp(-np.log(2) * np.arange(n)[::-1] / half_life)
+        weights /= weights.sum()
+        for _ in range(num_simulations):
+            indices.append(np.random.choice(available_dates, size=max_horizon, replace=True, p=weights))
+    else:
+        raise ValueError("Unknown bootstrap_type")
+    return np.array(indices)
+
+def generate_and_save_bootstrap_indices(
+    df, execution_dates, num_simulations, max_horizon, save_path,
+    bootstrap_type="iid", block_length=6, half_life=12, save_csv = True
+):
+    """
+    For each execution date, generate a long-format CSV of bootstrapped indices.
+    Columns: ExecutionDate, SimulationID, Horizon, BootDate
+    """
+    records = []
+    for exec_date in execution_dates:
+        available_dates = df.loc[:exec_date].index
+        boot_indices = generate_bootstrap_indices(
+            available_dates, num_simulations, max_horizon, 
+            bootstrap_type=bootstrap_type, block_length=block_length, half_life=half_life
+        )
+        for sim in range(num_simulations):
+            for h, boot_date in enumerate(boot_indices[sim], 1):
+                records.append({
+                    "execution_date": exec_date,
+                    "simulation_id": sim,
+                    "horizon": h,
+                    "bootstrap_residual_date": boot_date
+                })
+    df_boot = pd.DataFrame(records)
+    if save_csv:
+        df_boot.to_csv(save_path, index=False)
+    return df_boot
+
 def parallel_generate_simulations(
     model, model_name, test_data, lagged_beta1, horizons, 
     exogenous_variables, execution_date, df, target_col, 
+    bootstrap_dates,
     num_simulations=1000
 ):
     """
@@ -178,9 +238,10 @@ def parallel_generate_simulations(
     Returns:
         list: Simulation results for all horizons and simulation IDs.
     """
-    residuals = model.resid
-    bootstrapped_errors = np.random.choice(residuals, size=(num_simulations, max(horizons)), replace=True)
-
+    #residuals = model.resid
+    #bootstrapped_errors = np.random.choice(residuals, size=(num_simulations, max(horizons)), replace=True)
+    bootstrap_dates_exec = bootstrap_dates[bootstrap_dates["ExecutionDate"] == execution_date].copy()
+    
     simulations = []
 
     # Use ThreadPoolExecutor to parallelize simulations
@@ -189,7 +250,7 @@ def parallel_generate_simulations(
             executor.submit(
                 process_single_simulation,
                 model, model_name, test_data, lagged_beta1, horizons,
-                exogenous_variables, execution_date, sim_id, bootstrapped_errors[sim_id]
+                exogenous_variables, execution_date, sim_id, bootstrap_dates_exec
             )
             for sim_id in range(num_simulations)
         ]
@@ -201,7 +262,7 @@ def parallel_generate_simulations(
 
 def process_single_simulation(
     model, model_name, test_data, lagged_beta1, horizons, 
-    exogenous_variables, execution_date, sim_id, bootstrapped_errors
+    exogenous_variables, execution_date, sim_id, bootstrap_dates_exec
 ):
     """
     Process a single simulation for a specific execution date.
@@ -222,8 +283,12 @@ def process_single_simulation(
     Returns:
         list: Simulation results for all horizons.
     """
+    residuals = model.resid
     current_beta = lagged_beta1
     simulation_results = []
+    
+    sim_boot_dates = bootstrap_dates_exec[bootstrap_dates_exec["SimulationID"] == sim_id].sort_values("Horizon")["BootDate"]
+    bootstrapped_errors = residuals.reindex(sim_boot_dates.values).values
 
     for horizon in range(1, max(horizons) + 1):
         forecast_date = execution_date + pd.DateOffset(months=horizon)
@@ -245,12 +310,14 @@ def process_single_simulation(
 
         # Append simulation result
         simulation_results.append({
-            "Model": model_name,
-            "ExecutionDate": execution_date,
-            "ForecastDate": forecast_date,
-            "Horizon": horizon,
-            "SimulationID": sim_id,
-            "SimulatedValue": forecast_value
+            "model": model_name,
+            "execution_date": execution_date,
+            "forecast_date": forecast_date,
+            "horizon": horizon,
+            "simulation_id": sim_id,
+            "simulated_value": forecast_value,
+            "bootstrap_residual_date": pd.Timestamp(sim_boot_dates.values[horizon - 1]).strftime("%Y-%m-%d"),
+            "bootstrap_residual": bootstrapped_errors[horizon - 1]
         })
 
     return simulation_results
@@ -336,6 +403,7 @@ def extract_insample_metrics(model, execution_date, model_name, target_col):
 
 def process_execution_date_parallel(
     execution_date, df, target_col, horizons, model_name, model_handler, model_params,
+    bootstrap_dates,
     df_consensus_gdp, df_consensus_inf, num_simulations, country
 ):
     """
@@ -429,7 +497,8 @@ def process_execution_date_parallel(
         execution_date=execution_date,
         df=df,
         target_col=target_col,
-        num_simulations=num_simulations
+        num_simulations=num_simulations,
+        bootstrap_dates=bootstrap_dates
     )
 
     return results, simulations, residuals, insample_metrics
@@ -481,7 +550,9 @@ def generate_execution_dates(data, consensus_df=None, execution_date_column="for
 
 def expanding_window_backtest_double_parallel(
     country, df, target_col, horizons, model_name, model_handler, model_params,
-    df_consensus_gdp, df_consensus_inf, min_years=3, num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
+    execution_dates, bootstrap_dates,
+    df_consensus_gdp, df_consensus_inf, 
+    min_years=3, num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Performs an expanding window backtest with double parallelization.
@@ -507,13 +578,13 @@ def expanding_window_backtest_double_parallel(
     insample_residuals = []
     insample_metrics = []
     
-    execution_dates = generate_execution_dates(
-                        data=df,
-                        consensus_df=df_consensus_gdp if model_params.get("macro_forecast") == "consensus" else None,
-                        execution_date_column="forecast_date" if model_params.get("macro_forecast") == "consensus" else None,
-                        min_years=min_years,
-                        macro_forecast=model_params.get("macro_forecast")
-                        )
+    #execution_dates = generate_execution_dates(
+    #                    data=df,
+    #                    consensus_df=df_consensus_gdp if model_params.get("macro_forecast") == "consensus" else None,
+    #                    execution_date_column="forecast_date" if model_params.get("macro_forecast") == "consensus" else None,
+    #                    min_years=min_years,
+    #                    macro_forecast=model_params.get("macro_forecast")
+    #                    )
     
     # Parallelize execution dates
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -527,6 +598,7 @@ def expanding_window_backtest_double_parallel(
                 model_name,
                 model_handler,
                 model_params,
+                bootstrap_dates,
                 df_consensus_gdp,
                 df_consensus_inf,
                 num_simulations,
@@ -548,7 +620,9 @@ def expanding_window_backtest_double_parallel(
     return pd.DataFrame(results), pd.DataFrame(all_simulations), pd.concat(insample_residuals), pd.DataFrame(insample_metrics)
 
 def run_backtest_parallel_with_mlflow(
-    country, df, horizons, target_col, model_name, model_handler, model_params, save_dir="results", num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
+    country, df, horizons, target_col, model_name, model_handler, model_params,
+    execution_dates, bootstrap_dates, df_consensus_gdp, df_consensus_inf, 
+    save_dir="results", num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Runs a backtest with MLflow tracking and logs the results.
@@ -580,13 +654,13 @@ def run_backtest_parallel_with_mlflow(
         #    return None, None
 
         # Step 3: Generate consensus forecasts
-        consensus_forecast = ConsensusForecast(QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH)
-        try:
-            df_consensus_gdp, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} GDP")
-            df_consensus_inf, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} INF")
-        except Exception as e:
-            logging.error(f"Error retrieving consensus forecasts: {e}")
-            raise RuntimeError(f"Error retrieving consensus forecasts: {e}")
+        #consensus_forecast = ConsensusForecast(QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH)
+        #try:
+        #    df_consensus_gdp, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} GDP")
+        #    df_consensus_inf, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} INF")
+        #except Exception as e:
+        #    logging.error(f"Error retrieving consensus forecasts: {e}")
+        #    raise RuntimeError(f"Error retrieving consensus forecasts: {e}")
 
         # Step 4: Perform parallelized backtest
         df_predictions, df_simulations, df_insample_residuals, df_insample_metrics = expanding_window_backtest_double_parallel(
@@ -597,6 +671,8 @@ def run_backtest_parallel_with_mlflow(
             model_name=model_name,
             model_handler=model_handler,
             model_params=model_params,
+            execution_dates=execution_dates,
+            bootstrap_dates=bootstrap_dates,
             df_consensus_gdp=df_consensus_gdp,
             df_consensus_inf=df_consensus_inf,
             num_simulations=num_simulations,
@@ -608,11 +684,11 @@ def run_backtest_parallel_with_mlflow(
         with mlflow.start_run(run_name=unique_run_name):
             # Step 6: Extract predictions and actuals
             predictions = {
-                horizon: df_predictions[df_predictions["Horizon"] == horizon]["Prediction"].tolist()
+                horizon: df_predictions[df_predictions["horizon"] == horizon]["prediction"].tolist()
                 for horizon in horizons
             }
             actuals = {
-                horizon: df_predictions[df_predictions["Horizon"] == horizon]["Actual"].tolist()
+                horizon: df_predictions[df_predictions["horizon"] == horizon]["actual"].tolist()
                 for horizon in horizons
             }
 
@@ -642,35 +718,35 @@ def calculate_out_of_sample_metrics(df_predictions):
         dict: Metrics including RMSE and R-squared by horizon, execution date, and row (observation).
     """
     # Ensure necessary columns are present
-    if not {"Horizon", "Actual", "Prediction", "ExecutionDate", "ForecastDate"}.issubset(df_predictions.columns):
-        raise ValueError("df_predictions must contain 'Horizon', 'Actual', 'Prediction', 'ExecutionDate', and 'ForecastDate' columns.")
+    if not {"horizon", "actual", "prediction", "execution_date", "forecast_date"}.issubset(df_predictions.columns):
+        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecast_date' columns.")
 
     # Drop rows with NaN in Actual or Prediction
-    df_predictions = df_predictions.dropna(subset=["Actual", "Prediction"])
+    df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
 
     # Calculate residuals and squared errors
-    df_predictions["Residual"] = df_predictions["Actual"] - df_predictions["Prediction"]
-    df_predictions["SquaredError"] = df_predictions["Residual"] ** 2
-    df_predictions["RMSE_Row"] = np.sqrt(df_predictions["SquaredError"])  # RMSE for each row
+    df_predictions["residual"] = df_predictions["actual"] - df_predictions["prediction"]
+    df_predictions["squared_error"] = df_predictions["residual"] ** 2
+    df_predictions["rmse_row"] = np.sqrt(df_predictions["squared_error"])  # RMSE for each row
 
     # Metrics by horizon
     metrics_by_horizon = (
-        df_predictions.groupby("Horizon")
+        df_predictions.groupby("horizon")
         .apply(lambda group: pd.Series({
-            "mse": group["SquaredError"].mean(),
-            "r_squared": r2_score(group["Actual"], group["Prediction"]),
-            "rmse": np.sqrt(group["SquaredError"].mean())
+            "mse": group["squared_error"].mean(),
+            "r_squared": r2_score(group["actual"], group["prediction"]),
+            "rmse": np.sqrt(group["squared_error"].mean())
         }))
         .reset_index()
     )
 
     # RMSE by execution date
     metrics_by_execution_date = (
-        df_predictions.groupby("ExecutionDate")
+        df_predictions.groupby("execution_date")
         .apply(lambda group: pd.Series({
-            "mse": group["SquaredError"].mean(),
-            "r_squared": r2_score(group["Actual"], group["Prediction"]),
-            "rmse": np.sqrt(group["SquaredError"].mean())
+            "mse": group["squared_error"].mean(),
+            "r_squared": r2_score(group["actual"], group["prediction"]),
+            "rmse": np.sqrt(group["squared_error"].mean())
         }))
         .reset_index()
     )
@@ -678,11 +754,15 @@ def calculate_out_of_sample_metrics(df_predictions):
     return {
         "by_horizon": metrics_by_horizon,
         "by_execution_date": metrics_by_execution_date,
-        "by_row": df_predictions[["ExecutionDate", "ForecastDate", "Horizon", "RMSE_Row"]]  # RMSE for each row
+        "by_row": df_predictions[["execution_date", "forecast_date", "horizon", "rmse_row"]]  # RMSE for each row
     }
     
 def run_all_backtests_parallel(
-    country, df, horizons, target_col, save_dir="results", model_config=None, num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
+    country, df, horizons, target_col, 
+    execution_dates, bootstrap_dates, 
+    df_consensus_gdp, df_consensus_inf,
+    save_dir="results", model_config=None, 
+    num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
 ):
     """
     Runs backtests for a single model and combines results for a specific target column.
@@ -726,6 +806,10 @@ def run_all_backtests_parallel(
             model_name=model_name,
             model_handler=model_handler,
             model_params=model_params,
+            execution_dates=execution_dates, 
+            bootstrap_dates=bootstrap_dates, 
+            df_consensus_gdp=df_consensus_gdp, 
+            df_consensus_inf=df_consensus_inf,
             save_dir=save_dir,
             num_simulations=num_simulations,
             max_workers=max_workers

@@ -1,10 +1,16 @@
 #%%
 import os
+os.chdir(r'C:\git\backtest-baam\code')
 import logging
 from data_preparation.data_loader import DataLoader
 from backtesting.backtesting_pipeline import run_all_backtests_parallel  # Updated to use the parallelized version
 from backtesting.backtesting_logging import check_existing_results
 from backtesting.config_models import models  # Import models configuration
+
+from backtesting.backtesting_pipeline import generate_and_save_bootstrap_indices, generate_execution_dates
+from backtesting.backtesting_logging import clean_model_name
+from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
+from data_preparation.conensus_forecast import ConsensusForecast
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -78,15 +84,45 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
         for model_config in models_to_run:
             model_name = model_config["name"]
             logging.info(f"Running backtests for model: {model_name}")
+            
+            # --- 1. reading Consensus data if needed ---
+            if model_config['params'].get("macro_forecast") == "consensus":
+                consensus_forecast = ConsensusForecast(QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH)
+                df_consensus_gdp, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} GDP")
+                df_consensus_inf, _ = consensus_forecast.get_consensus_forecast(country_var=f"{country} INF")
+            else:
+                df_consensus_gdp, df_consensus_inf = None, None
+            
+            # --- 2. Generate execution dates for this model ---
+            execution_dates = generate_execution_dates(
+                data=df_combined,
+                consensus_df=df_consensus_gdp if model_config['params'].get("macro_forecast") == "consensus" else None,
+                execution_date_column="forecast_date" if model_config['params'].get("macro_forecast") == "consensus" else None,
+                min_years=3,
+                macro_forecast=model_config['params'].get("macro_forecast")
+            )
+            
+            bootstrap_csv_path = os.path.join(
+                save_dir, country, "factors", clean_model_name(model_name), "bootstrapped_indices.csv"
+            )
 
+            # --- 2. Bootstrap dates to be used for all target variables ---
+            df_boot = generate_and_save_bootstrap_indices(
+                df=df_combined,
+                execution_dates=execution_dates,
+                num_simulations=num_simulations,
+                max_horizon=max(horizons),
+                save_path=bootstrap_csv_path,
+                bootstrap_type="iid",  # or "iid", "half_life", "block"
+                block_length=None,
+                half_life=None
+            )
+                
             for target_col in target_columns_to_run:
                 #logging.info(f"Checking existing results for target column: {target_col} under model: {model_name}")
 
                 # Step 4.1: Check for existing results
                 backtest_type = "Expanding Window"  # Or another method name if applicable
-                #if check_existing_results(country, save_dir, target_col, model_name, backtest_type):
-                #    logging.info(f"Results already exist for model '{model_name}', target '{target_col}'. Skipping...")
-                #    continue  # Skip this combination if results already exist
 
                 # Step 4.2: Run backtests
                 logging.info(f"Running backtests for target column: {target_col} under model: {model_name}")
@@ -95,6 +131,10 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
                     df=df_combined,
                     horizons=horizons,
                     target_col=target_col,
+                    execution_dates=execution_dates,
+                    bootstrap_dates=df_boot,
+                    df_consensus_gdp=df_consensus_gdp,
+                    df_consensus_inf=df_consensus_inf,
                     save_dir=save_dir,
                     model_config=model_config,  # Pass a single model configuration
                     num_simulations=num_simulations,
@@ -110,7 +150,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['UK'] #  'US', 'UK' EA , 'UK'
+    countries = ['US','EA','UK'] # 
     test = False
     if test:
         model_name_to_test = "AR(1) + Inflation (UCSV) - MRM"
