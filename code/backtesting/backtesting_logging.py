@@ -69,7 +69,7 @@ def setup_mlflow(target_col):
         target_col (str): Target column for the experiment.
     """
     mlflow.set_tracking_uri(r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db")
-    experiment_name = f"{target_col}_parallel_backtest_with_metrics"
+    experiment_name = f"{target_col}_backtest_parallel_joint_bootstrap"
     mlflow.set_experiment(experiment_name)
 
 

@@ -11,14 +11,13 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 
 os.chdir(r'C:\git\backtest-baam\code')
 
-from backtesting.backtesting_logging import setup_mlflow, check_existing_results, log_backtest_results, clean_model_name
-from data_preparation.conensus_forecast import ConsensusForecast
+from backtesting.backtesting_logging import setup_mlflow, log_backtest_results, clean_model_name #check_existing_results,
+#from data_preparation.conensus_forecast import ConsensusForecast
 from data_preparation.data_transformations import convert_mom_to_yoy
 from modeling.macro_modeling import output_gap, inflation_expectations
-from modeling.time_series_modeling import fit_arx_model
 
-from backtesting.config_models import models
-from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
+#from backtesting.config_models import models
+#from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
 
 def prepare_train_test_data(
     country, df, execution_date, consensus_df_gdp, consensus_df_inf,
@@ -240,7 +239,7 @@ def parallel_generate_simulations(
     """
     #residuals = model.resid
     #bootstrapped_errors = np.random.choice(residuals, size=(num_simulations, max(horizons)), replace=True)
-    bootstrap_dates_exec = bootstrap_dates[bootstrap_dates["ExecutionDate"] == execution_date].copy()
+    bootstrap_dates_exec = bootstrap_dates[bootstrap_dates["execution_date"] == execution_date].copy()
     
     simulations = []
 
@@ -287,7 +286,7 @@ def process_single_simulation(
     current_beta = lagged_beta1
     simulation_results = []
     
-    sim_boot_dates = bootstrap_dates_exec[bootstrap_dates_exec["SimulationID"] == sim_id].sort_values("Horizon")["BootDate"]
+    sim_boot_dates = bootstrap_dates_exec[bootstrap_dates_exec["simulation_id"] == sim_id].sort_values("horizon")["bootstrap_residual_date"]
     bootstrapped_errors = residuals.reindex(sim_boot_dates.values).values
 
     for horizon in range(1, max(horizons) + 1):
