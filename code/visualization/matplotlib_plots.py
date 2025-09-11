@@ -2,14 +2,14 @@ import matplotlib.pyplot as plt
 
 def plot_forecasts_with_actuals(target_col, df_predictions, realized_beta, model='AR(1)', save_path=None):
     plt.figure(figsize=(10, 6))
-    unique_execution_dates = df_predictions['ExecutionDate'].unique()
+    unique_execution_dates = df_predictions['execution_date'].unique()
 
     for i, execution_date in enumerate(unique_execution_dates):
-        subset = df_predictions[df_predictions['ExecutionDate'] == execution_date]
+        subset = df_predictions[df_predictions['execution_date'] == execution_date]
         if i % 60 == 0:
-            plt.plot(subset['ForecastDate'], subset['Prediction'], linewidth=1.5, label=f"Forecast {execution_date.date()}")
+            plt.plot(subset['forecast_date'], subset['prediction'], linewidth=1.5, label=f"Forecast {execution_date.date()}")
         else:
-            plt.plot(subset['ForecastDate'], subset['Prediction'], color='gray', alpha=0.2)
+            plt.plot(subset['forecast_date'], subset['prediction'], color='gray', alpha=0.2)
 
     #plt.plot(realized_beta[(realized_beta.index > '1990') & (realized_beta.index < '2026')], color='black', linewidth=2, label="Actual Beta 1")
     plt.plot(realized_beta, color='black', linewidth=2, label=f"Actual {target_col}")
