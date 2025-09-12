@@ -22,6 +22,27 @@ models_configurations = {
     }
 }
 
+selected_models = [
+    {
+        "name": "AR(1) + Inflation (UCSV)",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "ucsv",
+            "macro_forecast": "consensus",
+            "exogenous_variables": ["inflation"]
+        }
+    },
+    {
+        "name": "AR(1) + Inflation (UCSV) - MRM",
+        "handler": ARXModel(),
+        "params": {
+            "inflation_method": "ucsv",
+            "macro_forecast": "ar_1",
+            "exogenous_variables": ["inflation"]
+        }
+    },
+]
+
 models = [
     {
         "name": "AR(1)",

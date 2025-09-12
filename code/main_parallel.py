@@ -5,7 +5,7 @@ import logging
 from data_preparation.data_loader import DataLoader
 from backtesting.backtesting_pipeline import run_all_backtests_parallel  # Updated to use the parallelized version
 from backtesting.backtesting_logging import check_existing_results
-from backtesting.config_models import models  # Import models configuration
+from backtesting.config_models import models, selected_models  # Import models configuration
 
 from backtesting.backtesting_pipeline import generate_and_save_bootstrap_indices, generate_execution_dates
 from backtesting.backtesting_logging import clean_model_name
@@ -75,6 +75,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
         logging.info("Loading data...")
         df_combined = data_loader.get_data()
 
+        models = selected_models
         # Step 4: Filter models and target columns
         models_to_run = [model for model in models if model["name"] == model_name_to_test] if model_name_to_test else models
         target_columns_to_run = [target_col_to_test] if target_col_to_test else target_columns
@@ -150,7 +151,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['US','EA','UK'] # 
+    countries = ['EA'] # 'US','EA','UK'
     test = False
     if test:
         model_name_to_test = "AR(1) + Inflation (UCSV) - MRM"
