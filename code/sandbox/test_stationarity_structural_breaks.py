@@ -204,8 +204,8 @@ def generate_report(adf_results, kpss_results, za_results, bp_breaks, grouped_df
 #beta = 'beta3'
 for country in ['US', 'EA', 'UK']:
     for beta in ['beta1', 'beta2', 'beta3']:
-        file_path = rf'L:\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\{beta}\forecasts.csv'
-        pdf_output_path = rf'L:\RMAS\Users\Alberto\backtest-baam\graphs\NSfactors_starionarity_{country}_{beta}.pdf'
+        file_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\{beta}\forecasts.csv'
+        pdf_output_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\graphs\NSfactors_starionarity_{country}_{beta}.pdf'
         
         # Preprocess the data
         grouped_df = preprocess_data(file_path)

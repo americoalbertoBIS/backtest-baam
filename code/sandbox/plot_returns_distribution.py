@@ -6,10 +6,10 @@ Created on Wed Aug 20 14:22:04 2025
 """
 
 import pandas as pd
-base_path = r'L:\RMAS\Users\Alberto\backtest-baam\data\US\returns\estimated_returns'
+base_path = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\US\returns\estimated_returns'
 data_1  = pd.read_parquet(fr'{base_path}\AR_1\annual\2.0_years\simulations_01122019.parquet')
 data_2  = pd.read_parquet(fr'{base_path}\Mixed_Model\annual\2.0_years\simulations_01122019.parquet')
-data_3  = pd.read_csv(r'L:\RMAS\Users\Alberto\backtest-baam\data\US\returns\estimated_returns\AR_1\annual_metrics.csv')
+data_3  = pd.read_csv(r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\US\returns\estimated_returns\AR_1\annual_metrics.csv')
 
 data_bench = data_3[(data_3['Maturity (Years)']==2)&(data_3['Execution Date']=='2019-12-01')&(data_3['Metric']=='Observed Annual Return')].drop_duplicates()
 

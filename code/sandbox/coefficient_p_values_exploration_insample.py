@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import glob
 
 # Define base path
-base_path = r'L:\RMAS\Users\Alberto\backtest-baam\data\US\factors'
+base_path = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\US\factors'
 
 # Get all subfolders
 folders = glob.glob(base_path + "/*/")

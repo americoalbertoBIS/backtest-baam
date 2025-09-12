@@ -20,7 +20,7 @@ from utils.modeling import YieldCurveModel
 from utils.nelson_siegel import compute_nsr_shadow_ts_noErr
 
 # Load data
-data_loader = DataLoader(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
+data_loader = DataLoader(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 AllCalcData, countries, sdr_countries = data_loader.load_data()
 selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('US')
 
