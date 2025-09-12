@@ -245,10 +245,10 @@ def plot_acf_plots(filtered_df, pdf):
 
 for country in ['US', 'EA', 'UK']:
     # File paths
-    beta1_path = rf'L:\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta1\residuals.csv'
-    beta2_path = rf'L:\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta2\residuals.csv'
-    beta3_path = rf'L:\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta3\residuals.csv'
-    pdf_output_path = rf'L:\RMAS\Users\Alberto\backtest-baam\graphs\residual_analysis_report_{country}.pdf'
+    beta1_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta1\residuals.csv'
+    beta2_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta2\residuals.csv'
+    beta3_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\{country}\factors\AR_1\beta3\residuals.csv'
+    pdf_output_path = rf'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\graphs\residual_analysis_report_{country}.pdf'
     
     # Execution date
     execution_date = '2025-01-01'

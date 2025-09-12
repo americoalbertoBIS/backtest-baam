@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # Define the base path for data
-BASE_PATH = r"L:\RMAS\Users\Alberto\backtest-baam\data"
+BASE_PATH = r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data"
 COLORS = {
     'Red': '#aa322f',
     'Blue': '#3a6bac',
@@ -505,7 +505,7 @@ def yields_page():
                 rmse_by_horizon_obs = observed_data.groupby(["Horizon (Years)", "Model"])["Value"].mean().reset_index()
 
                 # Load STR and LTR data (replace with your actual data loading logic)
-                forecast_data = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv")  # Replace with the correct path
+                forecast_data = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv")  # Replace with the correct path
                 str_data = forecast_data[
                     (forecast_data["country"] == selected_country) & (forecast_data["indicator"] == "STR") & (forecast_data["horizon"].isin([1,2,3,4,5]))
                 ]
@@ -608,7 +608,7 @@ def yields_page():
                 ]
 
                 # Load STR and LTR data (replace with your actual data loading logic)
-                forecast_data = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv")  # Replace with the correct path
+                forecast_data = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv")  # Replace with the correct path
                 str_data = forecast_data[
                     (forecast_data["country"] == selected_country) & (forecast_data["indicator"] == "STR")
                 ]
@@ -947,10 +947,10 @@ def plot_forecast_vs_realized(df_forecasts, country, indicator):
 def consensus_page():
     st.title("Consensus Analysis")
 
-    rmse_horizon = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv")
-    rmse_exec = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv")
-    rmse_horizon_exec = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv")
-    forecast_data = pd.read_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\backtest_results_all_countries_indicators.csv")
+    rmse_horizon = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv")
+    rmse_exec = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv")
+    rmse_horizon_exec = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv")
+    forecast_data = pd.read_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\backtest_results_all_countries_indicators.csv")
 
     # Sidebar: Dropdowns for Country and Indicator
     st.sidebar.header("Filter Options")

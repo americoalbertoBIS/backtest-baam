@@ -12,3 +12,4 @@ streamlit
 plotly
 matlabengine==24.1.4
 filelock
+tqdm

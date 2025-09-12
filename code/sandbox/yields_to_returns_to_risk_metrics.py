@@ -588,7 +588,7 @@ if __name__ == "__main__":
     models = ['AR_1'] # _1_Inflation_UCSV', 'AR_1_OutputGap'
 
     for country in countries:
-        data_loader = DataLoader(r'L:\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
+        data_loader = DataLoader(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
         _, _, _ = data_loader.load_data()
         selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
         modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})

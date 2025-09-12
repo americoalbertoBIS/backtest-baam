@@ -5,7 +5,7 @@ import numpy as np
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 # Define the global data path
-DATA_PATH = r"\\msfsshared\\bnkg\\RMAS\Resources\BAAM\OpenBAAM\Private\Data"
+DATA_PATH = r"\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data"
 
 class DataLoader:
     def __init__(self, country, variable_list, baam_path=None, macro_path=None, shadow=True):

@@ -15,9 +15,24 @@ models_configurations = {
         "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV",
         "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
     },
+    "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM": {
+        "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+        "beta2": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+        "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM"
+    },
     "Mixed_Model": {
         "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
         "beta2": "AR_1_Output_Gap_Direct",
+        "beta3": "AR_1"
+    },
+    "Mixed_Model_curvMacro": {
+        "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV",
+        "beta2": "AR_1_Output_Gap_Direct",
+        "beta3": "AR_1_Output_Gap_Direct_Inflation_UCSV"
+    },
+    "Mixed_Model_MRM": {
+        "beta1": "AR_1_Output_Gap_Direct_Inflation_UCSV_MRM",
+        "beta2": "AR_1_Output_Gap_Direct_MRM",
         "beta3": "AR_1"
     }
 }

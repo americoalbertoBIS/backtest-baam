@@ -386,10 +386,10 @@ for country in ['US', 'EA', 'UK']:
             print(f"Error plotting RMSE metrics for {country} - {indicator}: {e}")
             continue
 
-output_file = r"L:\RMAS\Users\Alberto\backtest-baam\data\backtest_results_all_countries_indicators.csv"
+output_file = r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\backtest_results_all_countries_indicators.csv"
 master_df.to_csv(output_file, index=False)
 
-master_rmse_horizon.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv", index=False)
-master_rmse_exec.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv", index=False)
-master_rmse_horizon_exec.to_csv(r"L:\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv", index=False)
+master_rmse_horizon.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_all_countries_indicators.csv", index=False)
+master_rmse_exec.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv", index=False)
+master_rmse_horizon_exec.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv", index=False)
 

@@ -21,11 +21,9 @@ from datetime import datetime, timedelta
 CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 MONTHS_IN_YEAR = 12      # Number of months in a year
 SAVE_DIR = r"C:\git\backtest-baam\data"
-SAVE_DIR = r"L:\RMAS\Users\Alberto\backtest-baam\data"
+SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 LOG_DIR = r"C:\git\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
-
-from filelock import FileLock
 
 class FactorsProcessor:
     def __init__(self, country, model_name, model_config, execution_date, yield_curve_model, model_params, preloaded_data=None):
@@ -88,10 +86,10 @@ class FactorsProcessor:
             Returns:
                 pd.DataFrame: The filtered DataFrame.
             """
-            df['ExecutionDate'] = pd.to_datetime(df['ExecutionDate'])  # Ensure datetime type
-            df['ForecastDate'] = pd.to_datetime(df['ForecastDate'])  # Ensure datetime type
-            df = df.sort_values(by=["ExecutionDate", "ForecastDate"])  # Sort by ExecutionDate and ForecastDate
-            filtered_df = df[df['ExecutionDate'] == execution_date].copy()
+            df['execution_date'] = pd.to_datetime(df['execution_date'])  # Ensure datetime type
+            df['forecast_date'] = pd.to_datetime(df['forecast_date'])  # Ensure datetime type
+            df = df.sort_values(by=["execution_date", "forecast_date"])  # Sort by ExecutionDate and ForecastDate
+            filtered_df = df[df['execution_date'] == execution_date].copy()
             #logging.info(f"Filtered DataFrame for execution date {execution_date}: {filtered_df.shape[0]} rows")
             return filtered_df
 
@@ -105,7 +103,7 @@ class FactorsProcessor:
         }
 
         # Use beta1 as the baseline for execution dates
-        baseline_execution_dates = self.preloaded_data["forecasted"]["beta1"]["ExecutionDate"].unique()
+        baseline_execution_dates = self.preloaded_data["forecasted"]["beta1"]["execution_date"].unique()
         logging.info(f"Baseline execution dates (from beta1): {len(baseline_execution_dates)} dates")
 
         # Check if the current execution date is in beta1
@@ -168,9 +166,9 @@ class FactorsProcessor:
         """
         # Combine forecasted betas into a rotated array
         rotated_betas = np.array([
-            self.df_pred_beta1['Prediction'].values,
-            self.df_pred_beta2['Prediction'].values,
-            self.df_pred_beta3['Prediction'].values
+            self.df_pred_beta1['prediction'].values,
+            self.df_pred_beta2['prediction'].values,
+            self.df_pred_beta3['prediction'].values
         ]).T
 
         # Compute predicted yields
@@ -182,7 +180,7 @@ class FactorsProcessor:
         # Create DataFrame for predicted yields
         self.predicted_yields_df = pd.DataFrame(
             predicted_yields,
-            index=self.df_pred_beta1['ForecastDate'].dropna(),
+            index=self.df_pred_beta1['forecast_date'].dropna(),
             columns=[f'{tau} years' for tau in self.yield_curve_model.uniqueTaus]
         )
         self.predicted_yields_df /= 100
@@ -194,24 +192,24 @@ class FactorsProcessor:
 
         # Reset the index to make 'forecasted_date' a regular column
         reshaped_df = self.predicted_yields_df.reset_index().melt(
-            id_vars='ForecastDate',  # Use the column created by reset_index()
+            id_vars='forecast_date',  # Use the column created by reset_index()
             var_name='maturity',
             value_name='prediction'
-        ).rename(columns={'ForecastDate': 'forecasted_date'})
+        )
 
         # Add additional columns
         reshaped_df['execution_date'] = self.execution_date
         
         # Add the horizon column directly from df_pred_beta1
         reshaped_df = reshaped_df.merge(
-            self.df_pred_beta1[['ForecastDate', 'Horizon']].rename(columns={'ForecastDate': 'forecasted_date'}),
-            on='forecasted_date',
+            self.df_pred_beta1[['forecast_date', 'horizon']],
+            on='forecast_date',
             how='left'
         )
         
         reshaped_df['actual'] = reshaped_df.apply(
-            lambda row: self.observed_yields_df_resampled.at[row['forecasted_date'], row['maturity']]
-            if row['forecasted_date'] in self.observed_yields_df_resampled.index else np.nan,
+            lambda row: self.observed_yields_df_resampled.at[row['forecast_date'], row['maturity']]
+            if row['forecast_date'] in self.observed_yields_df_resampled.index else np.nan,
             axis=1
         )
 
@@ -241,59 +239,10 @@ class FactorsProcessor:
         """
         Align observed and predicted yields by overlapping dates.
         """
-        overlapping_dates = self.observed_yields_df_resampled.index.intersection(self.predicted_yields_df.index)
+        overlapping_dates = self.observed_yields_df_resampled.index.intersection(self.mean_simulated_yields_df.index)
         self.aligned_observed_yields_df = self.observed_yields_df_resampled.loc[overlapping_dates]
-        self.aligned_predicted_yields_df = self.predicted_yields_df.loc[overlapping_dates]
+        self.aligned_predicted_yields_df = self.mean_simulated_yields_df.loc[overlapping_dates]
 
-    def compute_rmse_r_squared(self):
-        """
-        Compute RMSE and R-squared for each maturity and specific horizons (e.g., 6, 12, 24, 36, 48, 60 months).
-        """
-        # Define forecast horizons in months
-        horizons = [6, 12, 24, 36, 48, 60]  # Forecast horizons
-        horizons = range(1, max(horizons)+1)
-    
-        for column in self.aligned_observed_yields_df.columns:
-            maturity = float(column.split()[0])  # Extract maturity from column name
-    
-            for horizon in horizons:
-                # Filter observed and predicted yields for the specific horizon
-                horizon_end_date = self.execution_date + pd.DateOffset(months=horizon)
-                observed_horizon = self.aligned_observed_yields_df.loc[
-                    (self.aligned_observed_yields_df.index <= horizon_end_date), column
-                ]
-                predicted_horizon = self.aligned_predicted_yields_df.loc[
-                    (self.aligned_predicted_yields_df.index <= horizon_end_date), column
-                ]
-    
-                # Ensure alignment of observed and predicted data
-                overlapping_dates = observed_horizon.index.intersection(predicted_horizon.index)
-                observed_horizon = observed_horizon.loc[overlapping_dates]
-                predicted_horizon = predicted_horizon.loc[overlapping_dates]
-    
-                # Skip if no overlapping data
-                if len(observed_horizon) == 0 or len(predicted_horizon) == 0:
-                    continue
-    
-                # Calculate RMSE and R-squared
-                rmse = calculate_rmse(predicted_horizon.values, observed_horizon.values)
-                r_squared = calculate_r_squared(predicted_horizon.values, observed_horizon.values)
-    
-                # Append metrics to the data list
-                self.metrics_data.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon / 12,  # Convert months to years
-                    "Metric": "RMSE",
-                    "Value": rmse
-                })
-                self.metrics_data.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon / 12,
-                    "Metric": "R-Squared",
-                    "Value": r_squared
-                })
     def calculate_and_save_returns(self):
         """
         Calculate and save monthly and annual returns for a given maturity.
@@ -307,7 +256,7 @@ class FactorsProcessor:
 
         for maturity in self.yield_curve_model.uniqueTaus:
             prices_for_maturity = calculate_prices_from_yields(
-                                        self.simulated_observed_yields_df.xs(maturity, level="Maturity", axis=1), 
+                                        self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1), 
                                         maturity
                                     )
 
@@ -316,12 +265,12 @@ class FactorsProcessor:
 
             # Save Monthly Returns
             monthly_returns_long_format = monthly_returns.reset_index().melt(
-                id_vars=["ForecastDate"],  # Use ForecastDate as the identifier
-                var_name="SimulationID",  # Simulation IDs as variable names
-                value_name="MonthlyReturn"  # Monthly returns as values
+                id_vars=["forecast_date"],  # Use ForecastDate as the identifier
+                var_name="simulation_id",  # Simulation IDs as variable names
+                value_name="monthly_returns"  # Monthly returns as values
             )
-            monthly_returns_long_format["Maturity"] = f"{maturity} years"
-            monthly_returns_long_format["ExecutionDate"] = self.execution_date
+            monthly_returns_long_format["maturity"] = f"{maturity} years"
+            monthly_returns_long_format["execution_date"] = self.execution_date
 
             # Save to a Parquet file
             monthly_dir = returns_dir / "monthly" / f"{maturity}_years"
@@ -332,13 +281,13 @@ class FactorsProcessor:
             # Save Annual Returns
             annual_returns_long_format = annual_returns.reset_index().melt(
                 id_vars=["index"],  # Use ForecastDate as the identifier
-                var_name="SimulationID",  # Simulation IDs as variable names
-                value_name="AnnualReturn"  # Annual returns as values
+                var_name="simulation_id",  # Simulation IDs as variable names
+                value_name="annual_returns"  # Annual returns as values
             )
-            annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "Horizon (Years)"})
-            annual_returns_long_format["Horizon (Years)"] = annual_returns_long_format["Horizon (Years)"]+1
-            annual_returns_long_format["Maturity"] = f"{maturity} years"
-            annual_returns_long_format["ExecutionDate"] = self.execution_date
+            annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "horizon_years"})
+            annual_returns_long_format["horizon_years"] = annual_returns_long_format["horizon_years"]+1
+            annual_returns_long_format["maturity"] = f"{maturity} years"
+            annual_returns_long_format["execution_date"] = self.execution_date
 
             # Save to a Parquet file
             annual_dir = returns_dir / "annual" / f"{maturity}_years"
@@ -356,18 +305,27 @@ class FactorsProcessor:
         annual_metrics = []
 
         for maturity in self.yield_curve_model.uniqueTaus:
+
+            
+
             # Extract simulations for the current maturity
-            simulations_for_maturity = self.simulated_observed_yields_df.xs(maturity, level="Maturity", axis=1)
+            simulations_for_maturity = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)
+            # subset observed maturity
+            observed_yields = self.observed_yields_df_resampled[f"{maturity} years"]
+
+            # align time index
+            overlapping_dates = observed_yields.index.intersection(simulations_for_maturity.index)
+            aligned_observed_yields_df = observed_yields.loc[overlapping_dates]
+            aligned_predicted_yields_df = simulations_for_maturity.loc[overlapping_dates]
 
             # Convert simulated yields to prices
-            prices_for_maturity = calculate_prices_from_yields(simulations_for_maturity, maturity)
-
+            prices_for_maturity = calculate_prices_from_yields(aligned_predicted_yields_df, maturity)
             # Calculate monthly and annual returns for simulated prices
             monthly_returns, annual_returns = calculate_returns_from_prices(prices_for_maturity, months_in_year=MONTHS_IN_YEAR)
 
             # Convert observed yields to prices
-            observed_yields = self.aligned_observed_yields_df[f"{maturity} years"]
-            observed_prices = calculate_prices_from_yields(observed_yields, maturity)
+            #observed_yields = self.aligned_observed_yields_df[f"{maturity} years"]
+            observed_prices = calculate_prices_from_yields(aligned_observed_yields_df, maturity)
 
             # Calculate observed monthly returns
             observed_returns = observed_prices.pct_change(fill_method=None).dropna()
@@ -402,32 +360,32 @@ class FactorsProcessor:
                     break
 
                 monthly_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Months)": horizon,
-                    "Metric": "Monthly Expected Return",
-                    "Value": monthly_return
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_months": horizon,
+                    "metric": "Monthly Expected Return",
+                    "value": monthly_return
                 })
                 monthly_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Months)": horizon,
-                    "Metric": "Monthly VaR",
-                    "Value": monthly_var
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_months": horizon,
+                    "metric": "Monthly VaR",
+                    "value": monthly_var
                 })
                 monthly_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Months)": horizon,
-                    "Metric": "Monthly CVaR",
-                    "Value": monthly_cvar
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_months": horizon,
+                    "metric": "Monthly CVaR",
+                    "value": monthly_cvar
                 })
                 monthly_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Months)": horizon,
-                    "Metric": "Monthly Volatility",
-                    "Value": monthly_vol
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_months": horizon,
+                    "metric": "Monthly Volatility",
+                    "value": monthly_vol
                 })
 
             # Iterate through annual horizons (1 to 5 years)
@@ -440,39 +398,39 @@ class FactorsProcessor:
                     break
 
                 annual_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon,
-                    "Metric": "VaR",
-                    "Value": var
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_years": horizon,
+                    "metric": "VaR",
+                    "value": var
                 })
                 annual_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon,
-                    "Metric": "CVaR",
-                    "Value": cvar
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_years": horizon,
+                    "metric": "CVaR",
+                    "value": cvar
                 })
                 annual_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon,
-                    "Metric": "Volatility",
-                    "Value": vol
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_years": horizon,
+                    "metric": "Volatility",
+                    "value": vol
                 })
                 annual_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon,
-                    "Metric": "Expected Returns",
-                    "Value": expected_return
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_years": horizon,
+                    "metric": "Expected Annual Returns",
+                    "value": expected_return
                 })
                 annual_metrics.append({
-                    "Maturity (Years)": maturity,
-                    "Execution Date": self.execution_date,
-                    "Horizon (Years)": horizon,
-                    "Metric": "Observed Annual Return",
-                    "Value": observed_return
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon_years": horizon,
+                    "metric": "Observed Annual Return",
+                    "value": observed_return
                 })
 
         # Save monthly metrics to a separate file
@@ -501,55 +459,6 @@ class FactorsProcessor:
                 index=False  # Do not write the index column
             )
 
-    def compute_and_save_out_of_sample_metrics(self, df_predictions):
-        """
-        Compute out-of-sample metrics (e.g., RMSE, R-squared) for all maturities and save them to separate files.
-
-        Args:
-            df_predictions (pd.DataFrame): DataFrame containing predictions, actuals, horizons, and execution dates.
-        """
-        # Initialize lists to store metrics for all maturities
-        outofsample_metrics_by_horizon = []
-        outofsample_metrics_by_exec_date = []
-        outofsample_metrics = []
-
-        # Iterate over maturities
-        for maturity in df_predictions['maturity'].unique():
-            # Filter predictions for the current maturity
-            temp = df_predictions[df_predictions['maturity'] == maturity].copy()
-
-            # Calculate metrics for the current maturity
-            outofsample_metrics_temp = calculate_out_of_sample_metrics(temp)
-
-            # Add maturity as a column to each set of metrics
-            outofsample_metrics_temp["by_horizon"]['maturity'] = maturity
-            outofsample_metrics_temp["by_execution_date"]['maturity'] = maturity
-            outofsample_metrics_temp["by_row"]['maturity'] = maturity
-
-            # Append metrics to the corresponding lists
-            outofsample_metrics_by_horizon.append(outofsample_metrics_temp["by_horizon"])
-            outofsample_metrics_by_exec_date.append(outofsample_metrics_temp["by_execution_date"])
-            outofsample_metrics.append(outofsample_metrics_temp["by_row"])
-
-        # Combine metrics across all maturities
-        metrics_by_horizon = pd.concat(outofsample_metrics_by_horizon, ignore_index=True)
-        metrics_by_execution_date = pd.concat(outofsample_metrics_by_exec_date, ignore_index=True)
-        metrics_by_row = pd.concat(outofsample_metrics, ignore_index=True)
-
-        # Save metrics to CSV files
-        print("Saving out-of-sample metrics to files...")
-
-        metrics_by_horizon_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_horizon.csv"
-        metrics_by_horizon.to_csv(metrics_by_horizon_file, index=False)
-
-        metrics_by_execution_date_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_execution_date.csv"
-        metrics_by_execution_date.to_csv(metrics_by_execution_date_file, index=False)
-
-        metrics_by_row_file = self.yields_dir / "estimated_yields" / f"{self.model_name}" / f"outofsample_metrics_by_row.csv"
-        metrics_by_row.to_csv(metrics_by_row_file, index=False)
-
-        print("Out-of-sample metrics saved successfully.")
-
     def compute_simulated_observed_yields(self):
         """
         Compute simulated observed yields using the Nelson-Siegel model for all simulations.
@@ -558,9 +467,9 @@ class FactorsProcessor:
             """
             Filter and pivot the simulated betas DataFrame for the given execution date.
             """
-            df_sim = df_sim[df_sim['ExecutionDate'] == execution_date].copy()
-            df_sim['ForecastDate'] = pd.to_datetime(df_sim['ForecastDate'])
-            return df_sim.pivot(index='ForecastDate', columns='SimulationID', values='SimulatedValue')
+            df_sim = df_sim[df_sim['execution_date'] == execution_date].copy()
+            df_sim['forecast_date'] = pd.to_datetime(df_sim['forecast_date'])
+            return df_sim.pivot(index='forecast_date', columns='simulation_id', values='simulated_value')
     
         # Pivot simulated betas for each beta
         sim_beta1_pivot = filter_and_pivot_simulated_betas(self.df_sim_beta1, self.execution_date)
@@ -591,12 +500,16 @@ class FactorsProcessor:
             index=sim_beta1_pivot.index,
             columns=pd.MultiIndex.from_product(
                 [self.yield_curve_model.uniqueTaus, range(simulated_betas.shape[2])],  # Maturity and SimulationID
-                names=["Maturity", "SimulationID"]
+                names=["maturity", "simulation_id"]
             )
         )
     
         self.simulated_observed_yields_df /= 100
-    
+
+        # --- compute the mean simulated yields ---
+        # The result is a DataFrame: index=ForecastDate, columns=Maturity
+        self.mean_simulated_yields_df = self.simulated_observed_yields_df.T.groupby(level="maturity").mean().T
+
     def save_simulated_yields_long_format(self):
         """
         Save simulated yields in a long-format structure to a Parquet file.
@@ -606,32 +519,32 @@ class FactorsProcessor:
 
         # Reset the index to include ForecastDate as a column
         reshaped_df = self.simulated_observed_yields_df.reset_index()
-        reshaped_df.columns = ['ForecastDate'] + [
+        reshaped_df.columns = ['forecast_date'] + [
         f"{maturity}_{sim_id}" for maturity, sim_id in reshaped_df.columns[1:]
         ]
         # Melt the DataFrame to long format
         long_format_df = reshaped_df.melt(
-        id_vars=["ForecastDate"],  # Keep ForecastDate as an identifier
-        var_name="Maturity_SimulationID",  # Combine Maturity and SimulationID
-        value_name="SimulatedValue"  # Name of the values column
+        id_vars=["forecast_date"],  # Keep ForecastDate as an identifier
+        var_name="maturity_simulationid",  # Combine Maturity and SimulationID
+        value_name="simulated_value"  # Name of the values column
         )
         
         # Split the combined "Maturity_SimulationID" into separate columns
-        long_format_df[["Maturity", "SimulationID"]] = long_format_df["Maturity_SimulationID"].str.split("_", expand=True)
+        long_format_df[["maturity", "simulation_id"]] = long_format_df["maturity_simulationid"].str.split("_", expand=True)
         
         # Drop the combined column
-        long_format_df = long_format_df.drop(columns=["Maturity_SimulationID"])
+        long_format_df = long_format_df.drop(columns=["maturity_simulationid"])
         
         # Convert Maturity and SimulationID to appropriate types
-        long_format_df["Maturity"] = long_format_df["Maturity"].astype(float)
-        long_format_df["SimulationID"] = long_format_df["SimulationID"].astype(int)
+        long_format_df["maturity"] = long_format_df["maturity"].astype(float)
+        long_format_df["simulation_id"] = long_format_df["simulation_id"].astype(int)
 
         # Add additional columns
-        long_format_df["ExecutionDate"] = self.execution_date  # Add execution date
-        long_format_df["Model"] = self.model_name  # Add model name
-        long_format_df["Horizon"] = (long_format_df["ForecastDate"] - self.execution_date).dt.days // 30  # Calculate horizon in months
-        long_format_df["Horizon"] = long_format_df["Horizon"].astype(int)  # Ensure it's an integer
-        long_format_df["Maturity"] = long_format_df["Maturity"].astype(float).map(
+        long_format_df["execution_date"] = self.execution_date  # Add execution date
+        long_format_df["model"] = self.model_name  # Add model name
+        long_format_df["horizon"] = (long_format_df["forecast_date"] - self.execution_date).dt.days // 30  # Calculate horizon in months
+        long_format_df["horizon"] = long_format_df["horizon"].astype(int)  # Ensure it's an integer
+        long_format_df["maturity"] = long_format_df["maturity"].astype(float).map(
             lambda x: f"{x} years"
         )  # Convert maturity to a readable string
         
@@ -640,7 +553,7 @@ class FactorsProcessor:
             maturity_dir.mkdir(parents=True, exist_ok=True)
 
             # Extract simulations for the current maturity
-            simulations_for_maturity = long_format_df[long_format_df["Maturity"] == f"{maturity} years"]
+            simulations_for_maturity = long_format_df[long_format_df["maturity"] == f"{maturity} years"]
 
             # Save each execution date's simulations as a separate Parquet file
             file_path = maturity_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
@@ -648,40 +561,52 @@ class FactorsProcessor:
             # Save to Parquet
             simulations_for_maturity.to_parquet(file_path, index=False)
 
-    def save_results(self):
+    def save_mean_simulated_yields_to_forecasts(self):
         """
-        Save metrics to separate CSV files for yields and returns in the 'metrics' subdirectory.
+        Save mean simulated yields and actual observed yields to forecasts.csv in the same format as predicted yields.
         """
-        metrics_df = pd.DataFrame(self.metrics_data)
+        # Reshape mean simulated yields to long format
+        reshaped_df = self.mean_simulated_yields_df.reset_index().melt(
+            id_vars='forecast_date',
+            var_name='maturity',
+            value_name='mean_simulated'
+        )
 
-        # Separate metrics into yields-related and returns-related
-        yields_metrics = metrics_df[metrics_df['Metric'].isin(['RMSE', 'R-Squared'])]
-        returns_metrics = metrics_df[metrics_df['Metric'].isin(['VaR', 'CVaR', 'Volatility', 'Expected Returns', 'Observed Annual Return'])]
+        # Add execution date
+        reshaped_df['execution_date'] = self.execution_date
 
-        # Save yields metrics
-        if not yields_metrics.empty:
-            yields_file_path = self.metrics_dir / f"yields_metrics_{self.model_name}.csv"
-            lock_file_path = f"{yields_file_path}.lock"
-            lock = FileLock(lock_file_path)
-            with lock:
-                yields_metrics.to_csv(
-                    yields_file_path,
-                    mode='a',  # Append mode
-                    header=not yields_file_path.exists(),  # Write header if the file does not exist
-                    index=False  # Do not write the index column
-                )
-            print(f"Yields metrics saved to {yields_file_path}")
+        # Add horizon column from df_pred_beta1 (if available)
+        if hasattr(self, 'df_pred_beta1') and 'forecast_date' in self.df_pred_beta1.columns and 'horizon' in self.df_pred_beta1.columns:
+            reshaped_df = reshaped_df.merge(
+                self.df_pred_beta1[['forecast_date', 'horizon']],
+                on='forecast_date',
+                how='left'
+            )
 
-        # Save returns metrics
-        if not returns_metrics.empty:
-            returns_file_path = self.metrics_dir / f"returns_metrics_{self.model_name}.csv"
-            lock_file_path = f"{returns_file_path}.lock"
-            lock = FileLock(lock_file_path)
-            with lock:
-                returns_metrics.to_csv(
-                    returns_file_path,
-                    mode='a',  # Append mode
-                    header=not returns_file_path.exists(),  # Write header if the file does not exist
-                    index=False  # Do not write the index column
-                )
-            print(f"Returns metrics saved to {returns_file_path}")
+        # Add actual observed yields
+        reshaped_df['actual'] = reshaped_df.apply(
+                lambda row: self.observed_yields_df_resampled.at[row['forecast_date'],f"{row['maturity']} years"] 
+                if row['forecast_date'] in self.observed_yields_df_resampled.index and 
+                f"{row['maturity']} years" in self.observed_yields_df_resampled.columns else np.nan,
+                axis=1
+            )
+
+        # Save to forecasts.csv (same location as predicted yields)
+        model_dir = self.yields_dir / "estimated_yields" / f"{self.model_name}"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        output_file_path = model_dir / "forecasts.csv"
+        lock_file_path = f"{output_file_path}.lock"
+
+        # Use FileLock for thread safety
+        
+        lock = FileLock(lock_file_path)
+        with lock:
+            reshaped_df.to_csv(
+                output_file_path,
+                mode='a',
+                header=not output_file_path.exists(),
+                index=False
+            )
+        
+        return reshaped_df
+
