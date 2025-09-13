@@ -180,7 +180,7 @@ def main():
     countries = ['US']  # Add other countries if needed , 'EA', 'UK'
     
     # Define the subset of models to run
-    run_all_models = False
+    run_all_models = True
     
     if not run_all_models:
         models_to_run = ["AR_1_Output_Gap_Direct_Inflation_UCSV"]  # <-- Set your desired subset here
