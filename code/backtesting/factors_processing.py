@@ -297,65 +297,48 @@ class FactorsProcessor:
 
     def compute_var_cvar_vol(self):
         """
-        Compute VaR, CVaR, Expected Returns, and Observed Monthly and Annual Returns for each year of the horizon and maturity.
-        Save monthly and annual metrics to separate files.
+        Compute VaR, CVaR, Expected Returns, and Observed Monthly and Annual Returns for each year of the horizon and maturity,
+        at multiple confidence levels. Save monthly and annual metrics to separate files.
         """
-        # Initialize lists to store metrics separately for monthly and annual returns
+        # Define confidence levels (as quantiles, e.g. 0.95 for 95%)
+        confidence_levels = [0.95, 0.975, 0.99]
         monthly_metrics = []
         annual_metrics = []
 
         for maturity in self.yield_curve_model.uniqueTaus:
-
-            
-
             # Extract simulations for the current maturity
             simulations_for_maturity = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)
-            # subset observed maturity
             observed_yields = self.observed_yields_df_resampled[f"{maturity} years"]
 
-            # align time index
+            # Align time index
             overlapping_dates = observed_yields.index.intersection(simulations_for_maturity.index)
             aligned_observed_yields_df = observed_yields.loc[overlapping_dates]
             aligned_predicted_yields_df = simulations_for_maturity.loc[overlapping_dates]
 
             # Convert simulated yields to prices
             prices_for_maturity = calculate_prices_from_yields(aligned_predicted_yields_df, maturity)
-            # Calculate monthly and annual returns for simulated prices
             monthly_returns, annual_returns = calculate_returns_from_prices(prices_for_maturity, months_in_year=MONTHS_IN_YEAR)
 
-            # Convert observed yields to prices
-            #observed_yields = self.aligned_observed_yields_df[f"{maturity} years"]
+            # Convert observed yields to prices and returns
             observed_prices = calculate_prices_from_yields(aligned_observed_yields_df, maturity)
-
-            # Calculate observed monthly returns
             observed_returns = observed_prices.pct_change(fill_method=None).dropna()
-
-            # Group observed returns into annual periods relative to the execution date
             observed_annual_returns = observed_returns.groupby(
                 np.arange(len(observed_returns)) // MONTHS_IN_YEAR
             ).sum()
-
-            # Ensure observed annual returns align with simulated annual returns
             observed_annual_returns = observed_annual_returns.iloc[:len(annual_returns)]
 
-            # Vectorized calculations for monthly returns
-            monthly_expected_returns = monthly_returns.mean(axis=1)  # Mean across simulations
-            monthly_var_values = monthly_returns.quantile(CONFIDENCE_LEVEL, axis=1)  # VaR (quantile)
-            monthly_cvar_values = monthly_returns[monthly_returns.le(monthly_var_values, axis=0)].mean(axis=1)  # CVaR
-            monthly_volatility = monthly_returns.std(axis=1)  # Volatility (standard deviation)
+            # Monthly metrics
+            monthly_expected_returns = monthly_returns.mean(axis=1)
+            monthly_volatility = monthly_returns.std(axis=1)
 
-            # Vectorized calculations for annual returns
-            expected_returns = annual_returns.mean(axis=1)  # Mean across simulations
-            var_values = annual_returns.quantile(CONFIDENCE_LEVEL, axis=1)  # VaR (quantile)
-            cvar_values = annual_returns[annual_returns.le(var_values, axis=0)].mean(axis=1)  # CVaR
-            volatility = annual_returns.std(axis=1)  # Volatility (standard deviation)
+            # Annual metrics
+            expected_returns = annual_returns.mean(axis=1)
+            volatility = annual_returns.std(axis=1)
 
             # Iterate through monthly horizons (1 to 60 months)
-            for horizon, (monthly_return, monthly_var, monthly_cvar, monthly_vol) in enumerate(
-                zip_longest(monthly_expected_returns, monthly_var_values, monthly_cvar_values, monthly_volatility, fillvalue=None), 
-                start=1
+            for horizon, (monthly_return, monthly_vol) in enumerate(
+                zip_longest(monthly_expected_returns, monthly_volatility, fillvalue=None), start=1
             ):
-                # Skip if the horizon exceeds the available data
                 if horizon > 60:
                     break
 
@@ -370,30 +353,33 @@ class FactorsProcessor:
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
                     "horizon_months": horizon,
-                    "metric": "Monthly VaR",
-                    "value": monthly_var
-                })
-                monthly_metrics.append({
-                    "maturity_years": maturity,
-                    "execution_date": self.execution_date,
-                    "horizon_months": horizon,
-                    "metric": "Monthly CVaR",
-                    "value": monthly_cvar
-                })
-                monthly_metrics.append({
-                    "maturity_years": maturity,
-                    "execution_date": self.execution_date,
-                    "horizon_months": horizon,
                     "metric": "Monthly Volatility",
                     "value": monthly_vol
                 })
 
+                # VaR and CVaR for each confidence level
+                for cl in confidence_levels:
+                    var = monthly_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(monthly_returns) else None
+                    cvar = monthly_returns.iloc[horizon - 1][monthly_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
+                    monthly_metrics.append({
+                        "maturity_years": maturity,
+                        "execution_date": self.execution_date,
+                        "horizon_months": horizon,
+                        "metric": f"Monthly VaR {int(cl*100)}",
+                        "value": var
+                    })
+                    monthly_metrics.append({
+                        "maturity_years": maturity,
+                        "execution_date": self.execution_date,
+                        "horizon_months": horizon,
+                        "metric": f"Monthly CVaR {int(cl*100)}",
+                        "value": cvar
+                    })
+
             # Iterate through annual horizons (1 to 5 years)
-            for horizon, (expected_return, var, cvar, vol, observed_return) in enumerate(
-                zip_longest(expected_returns, var_values, cvar_values, volatility, observed_annual_returns, fillvalue=None), 
-                start=1
+            for horizon, (expected_return, vol, observed_return) in enumerate(
+                zip_longest(expected_returns, volatility, observed_annual_returns, fillvalue=None), start=1
             ):
-                # Skip if the horizon exceeds the available data
                 if horizon > 5:
                     break
 
@@ -401,15 +387,8 @@ class FactorsProcessor:
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
                     "horizon_years": horizon,
-                    "metric": "VaR",
-                    "value": var
-                })
-                annual_metrics.append({
-                    "maturity_years": maturity,
-                    "execution_date": self.execution_date,
-                    "horizon_years": horizon,
-                    "metric": "CVaR",
-                    "value": cvar
+                    "metric": "Expected Annual Returns",
+                    "value": expected_return
                 })
                 annual_metrics.append({
                     "maturity_years": maturity,
@@ -422,16 +401,28 @@ class FactorsProcessor:
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
                     "horizon_years": horizon,
-                    "metric": "Expected Annual Returns",
-                    "value": expected_return
-                })
-                annual_metrics.append({
-                    "maturity_years": maturity,
-                    "execution_date": self.execution_date,
-                    "horizon_years": horizon,
                     "metric": "Observed Annual Return",
                     "value": observed_return
                 })
+
+                # VaR and CVaR for each confidence level
+                for cl in confidence_levels:
+                    var = annual_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(annual_returns) else None
+                    cvar = annual_returns.iloc[horizon - 1][annual_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
+                    annual_metrics.append({
+                        "maturity_years": maturity,
+                        "execution_date": self.execution_date,
+                        "horizon_years": horizon,
+                        "metric": f"VaR {int(cl*100)}",
+                        "value": var
+                    })
+                    annual_metrics.append({
+                        "maturity_years": maturity,
+                        "execution_date": self.execution_date,
+                        "horizon_years": horizon,
+                        "metric": f"CVaR {int(cl*100)}",
+                        "value": cvar
+                    })
 
         # Save monthly metrics to a separate file
         monthly_metrics_df = pd.DataFrame(monthly_metrics)
@@ -441,9 +432,9 @@ class FactorsProcessor:
         with lock:
             monthly_metrics_df.to_csv(
                 monthly_file_path,
-                mode='a',  # Append mode
-                header=not monthly_file_path.exists(),  # Write header if the file does not exist
-                index=False  # Do not write the index column
+                mode='a',
+                header=not monthly_file_path.exists(),
+                index=False
             )
 
         # Save annual metrics to a separate file
@@ -454,9 +445,9 @@ class FactorsProcessor:
         with lock:
             annual_metrics_df.to_csv(
                 annual_file_path,
-                mode='a',  # Append mode
-                header=not annual_file_path.exists(),  # Write header if the file does not exist
-                index=False  # Do not write the index column
+                mode='a',
+                header=not annual_file_path.exists(),
+                index=False
             )
 
     def compute_simulated_observed_yields(self):
