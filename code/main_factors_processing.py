@@ -177,13 +177,13 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US', 'EA', 'UK']  # Add other countries if needed , 'EA', 'UK'
+    countries = ['US']  # Add other countries if needed , 'EA', 'UK'
     
     # Define the subset of models to run
-    run_all_models = True
+    run_all_models = False
     
     if not run_all_models:
-        models_to_run = ["AR_1_Output_Gap_Direct_Inflation_UCSV"]  # <-- Set your desired subset here
+        models_to_run = ["Mixed_Model_MRM"]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
     else:
@@ -193,7 +193,7 @@ def main():
     max_workers = max(1, multiprocessing.cpu_count() // 3)
     
 
-    all_predictions = []  # List to store predictions for all execution dates
+    
 
     for country in countries:
         
@@ -220,6 +220,8 @@ def main():
 
         # Iterate over the selected beta combinations (from models_configurations)
         for model_name, model_config in selected_models_configurations.items():
+            all_predictions = []  # List to store predictions for all execution dates
+            
             logger.info(f"Processing model: {model_name} for country: {country}")
 
             # Get all execution dates for the current country and model combination

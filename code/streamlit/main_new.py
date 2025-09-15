@@ -24,14 +24,14 @@ def load_data(folder_path, subfolder, model, file_name):
             return None
 
         # Rename columns if necessary
-        rename_mapping = {
-            "execution_date": "ExecutionDate",
-            "forecasted_date": "ForecastDate",
-            "prediction": "Prediction",
-            "actual": "Actual",
-            "horizon": "Horizon"
-        }
-        data = data.rename(columns=rename_mapping)
+        #rename_mapping = {
+        #    "execution_date": "ExecutionDate",
+        #    "forecasted_date": "ForecastDate",
+        #    "prediction": "Prediction",
+        #    "actual": "Actual",
+        #    "horizon": "Horizon"
+        #}
+        #data = data.rename(columns=rename_mapping)
         return data
     else:
         st.warning(f"File not found: {file_path}")
@@ -41,18 +41,18 @@ def load_data(folder_path, subfolder, model, file_name):
 def calculate_rmse(data, start_date, end_date=None):
     """Calculate RMSE from the forecasts data filtered by start and end dates."""
     filtered_data = data[
-        (pd.to_datetime(data["ExecutionDate"]) >= pd.to_datetime(start_date))
+        (pd.to_datetime(data["execution_date"]) >= pd.to_datetime(start_date))
     ]
     if end_date:
         filtered_data = filtered_data[
-            (pd.to_datetime(filtered_data["ExecutionDate"]) <= pd.to_datetime(end_date))
+            (pd.to_datetime(filtered_data["execution_date"]) <= pd.to_datetime(end_date))
         ]
-    filtered_data = filtered_data.dropna(subset=["Actual", "Prediction"])
+    filtered_data = filtered_data.dropna(subset=["actual", "prediction"])
     rmse_data = (
         filtered_data
-        .groupby("Horizon")
-        .apply(lambda x: np.sqrt(((x["Prediction"] - x["Actual"]) ** 2).mean()))
-        .reset_index(name="RMSE")
+        .groupby("horizon")
+        .apply(lambda x: np.sqrt(((x["prediction"] - x["actual"]) ** 2).mean()))
+        .reset_index(name="rmse")
     )
     return rmse_data
 
@@ -65,7 +65,7 @@ def load_and_cache_forecasts(models, yields_folder_path, include_benchmark):
         model_to_load = benchmark_model if model == f"{benchmark_model} (Benchmark)" else model
         data = load_data(yields_folder_path, subfolder, model_to_load, "forecasts.csv")
         if data is not None:
-            data["Model"] = model
+            data["model"] = model
             cached_data[model] = data
     return cached_data
 
@@ -119,8 +119,14 @@ def load_and_cache_data(models, yields_folder_path, include_benchmark, file_name
         subfolder = "observed_yields" if model == f"{benchmark_model} (Benchmark)" else "estimated_yields"
         model_to_load = benchmark_model if model == f"{benchmark_model} (Benchmark)" else model
         data = load_data(yields_folder_path, subfolder, model_to_load, file_name)
+        if subfolder == "observed_yields":
+            data['maturity'] = data['maturity'].str.split(' ', expand = True)[0]
+        else:
+            data['maturity'] = data['maturity'].astype(str)
+            data = data.rename(columns={"mean_simulated": "prediction"})
+            
         if data is not None:
-            data["Model"] = model
+            data["model"] = model
             cached_data[model] = data
     return cached_data
 
@@ -133,7 +139,7 @@ countries = ["US", "EA", "UK"]
 selected_country = st.sidebar.selectbox("Select Country", countries, index=0)
 
 # Dynamically update the folder path based on the selected country
-base_folder = r"\\msfsshared\BNKG\\RMAS\Users\Alberto\backtest-baam\data"
+base_folder = r"\\msfsshared\BNKG\\RMAS\Users\Alberto\backtest-baam\data_joint"
 folder_path = os.path.join(base_folder, selected_country, "factors")
 
 # Get available models and target variables
@@ -143,7 +149,8 @@ target_variables = ["beta1", "beta2", "beta3"]
 # Tabs for Out-of-Sample and In-Sample Metrics
 tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_simulation_comparison = st.tabs(
     ["Factors backtesting overview","Factors out-of-sample metrics", "Factors in-sample metrics", "Factors simulations analysis", 
-     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", "Returns backtesting overview", "Returns forward looking distributions"]
+     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", 
+     "Returns backtesting overview", "Returns forward looking distributions"]
 )
 
 with tab_factors:
@@ -209,20 +216,20 @@ with tab_factors:
                         data = load_data(folder_path, os.path.join(model, target_variable), "", "forecasts.csv")
 
                         # Ensure the required columns exist
-                        required_columns = ["ExecutionDate", "ForecastDate", "Prediction", "Actual"]
+                        required_columns = ["execution_date", "forecast_date", "prediction", "actual"]
                         if all(col in data.columns for col in required_columns):
                             # Convert ExecutionDate to datetime if not already in datetime format
-                            if not pd.api.types.is_datetime64_any_dtype(data["ExecutionDate"]):
-                                data["ExecutionDate"] = pd.to_datetime(data["ExecutionDate"])
+                            if not pd.api.types.is_datetime64_any_dtype(data["execution_date"]):
+                                data["execution_date"] = pd.to_datetime(data["execution_date"])
 
                             # Filter data using the selected date range
                             filtered_data = data[
-                                (data["ExecutionDate"].dt.date >= start_date) &
-                                (data["ExecutionDate"].dt.date <= end_date)
+                                (data["execution_date"].dt.date >= start_date) &
+                                (data["execution_date"].dt.date <= end_date)
                             ]
 
                             if not filtered_data.empty:
-                                filtered_data["Model"] = model
+                                filtered_data["model"] = model
                                 combined_data.append(filtered_data)
                         else:
                             st.warning(f"Required columns are missing in the forecasts data for model: {model}, factor: {target_variable}")
@@ -234,7 +241,7 @@ with tab_factors:
                     combined_data = pd.concat(combined_data, ignore_index=True)
 
                     # Prepare the actuals data
-                    realized_beta = combined_data.groupby("ForecastDate")["Actual"].mean()
+                    realized_beta = combined_data.groupby("forecast_date")["actual"].mean()
 
                     # Create the Plotly figure
                     fig = go.Figure()
@@ -251,15 +258,15 @@ with tab_factors:
                     model_color_mapping = {model: model_colors[i] for i, model in enumerate(selected_models)}
 
                     for model in selected_models:
-                        model_data = combined_data[combined_data["Model"] == model]
-                        unique_execution_dates = model_data["ExecutionDate"].unique()
+                        model_data = combined_data[combined_data["model"] == model]
+                        unique_execution_dates = model_data["execution_date"].unique()
                         
                         # Add traces for each execution date, but hide them from the legend
                         for execution_date in unique_execution_dates:
-                            subset = model_data[model_data["ExecutionDate"] == execution_date]
+                            subset = model_data[model_data["execution_date"] == execution_date]
                             fig.add_trace(go.Scatter(
-                                x=subset["ForecastDate"],
-                                y=subset["Prediction"],
+                                x=subset["forecast_date"],
+                                y=subset["prediction"],
                                 mode="lines",
                                 line=dict(color=model_color_mapping[model], width=1),
                                 opacity=0.5,
@@ -311,10 +318,10 @@ with tab_out_of_sample:
             # Load data for out-of-sample metrics
             data_horizon = load_data(folder_path, model, target_variable, "outofsample_metrics_by_horizon.csv")
             data_execution = load_data(folder_path, model, target_variable, "outofsample_metrics_by_execution_date.csv")
-            if data_horizon is not None and "ExecutionDate" in data_horizon.columns:
-                all_dates.extend(pd.to_datetime(data_horizon["ExecutionDate"]).tolist())
-            if data_execution is not None and "ExecutionDate" in data_execution.columns:
-                all_dates.extend(pd.to_datetime(data_execution["ExecutionDate"]).tolist())
+            if data_horizon is not None and "execution_date" in data_horizon.columns:
+                all_dates.extend(pd.to_datetime(data_horizon["execution_date"]).tolist())
+            if data_execution is not None and "execution_date" in data_execution.columns:
+                all_dates.extend(pd.to_datetime(data_execution["execution_date"]).tolist())
 
     # Calculate the minimum and maximum dates
     if all_dates:
@@ -346,19 +353,19 @@ with tab_out_of_sample:
             for model in selected_models:
                 data = load_data(folder_path, model, target_variable, "outofsample_metrics_by_horizon.csv")
                 if data is not None:
-                    data["Model"] = model
+                    data["model"] = model
                     combined_data.append(data)
             
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="Horizon",
+                    x="horizon",
                     y="rmse",
-                    color="Model",
+                    color="model",
                     markers=True,
                     title=f"{target_variable}",
-                    labels={"rmse": "RMSE", "Horizon": "Horizon"},
+                    labels={"rmse": "RMSE", "horizon": "Horizon"},
                 )
                 fig.update_layout(
                     legend=dict(
@@ -402,23 +409,23 @@ with tab_out_of_sample:
                 data = load_data(folder_path, model, target_variable, "forecasts.csv")
                 if data is not None:
                     filtered_data = data[
-                        (pd.to_datetime(data['ExecutionDate']) >= pd.to_datetime(dynamic_start_date)) &
-                        (pd.to_datetime(data['ExecutionDate']) <= pd.to_datetime(dynamic_end_date))
+                        (pd.to_datetime(data['execution_date']) >= pd.to_datetime(dynamic_start_date)) &
+                        (pd.to_datetime(data['execution_date']) <= pd.to_datetime(dynamic_end_date))
                     ]
                     rmse_data = calculate_rmse(filtered_data, dynamic_start_date)
-                    rmse_data["Model"] = model
+                    rmse_data["model"] = model
                     combined_data.append(rmse_data)
             
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="Horizon",
-                    y="RMSE",
-                    color="Model",
+                    x="horizon",
+                    y="rmse",
+                    color="model",
                     markers=True,
                     title=f"{target_variable}",
-                    labels={"Horizon": "Horizon", "RMSE": "RMSE"},
+                    labels={"horizon": "Horizon", "rmse": "RMSE"},
                 )
                 fig.update_layout(
                     legend=dict(
@@ -462,21 +469,21 @@ with tab_out_of_sample:
                 data = load_data(folder_path, model, target_variable, "outofsample_metrics_by_execution_date.csv")
                 if data is not None:
                     filtered_data = data[
-                        (pd.to_datetime(data['ExecutionDate']) >= pd.to_datetime(execution_start_date)) &
-                        (pd.to_datetime(data['ExecutionDate']) <= pd.to_datetime(execution_end_date))
+                        (pd.to_datetime(data['execution_date']) >= pd.to_datetime(execution_start_date)) &
+                        (pd.to_datetime(data['execution_date']) <= pd.to_datetime(execution_end_date))
                     ]
-                    filtered_data["Model"] = model
+                    filtered_data["model"] = model
                     combined_data.append(filtered_data)
             
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="ExecutionDate",
+                    x="execution_date",
                     y="rmse",
-                    color="Model",
+                    color="model",
                     title=f"{target_variable}",
-                    labels={"rmse": "RMSE", "ExecutionDate": "Execution Date"},
+                    labels={"rmse": "RMSE", "execution_date": "Execution Date"},
                 )
                 fig.update_layout(
                     legend=dict(
@@ -501,12 +508,12 @@ with tab_in_sample:
         for target_variable in target_variables:
             data = load_data(folder_path, model, target_variable, "insample_metrics.csv")
             if data is not None:
-                data["ExecutionDate"] = pd.to_datetime(data["ExecutionDate"])
+                data["execution_date"] = pd.to_datetime(data["execution_date"])
                 all_data.append(data)
     if all_data:
         combined_data = pd.concat(all_data, ignore_index=True)
-        min_date = combined_data["ExecutionDate"].min()
-        max_date = combined_data["ExecutionDate"].max()
+        min_date = combined_data["execution_date"].min()
+        max_date = combined_data["execution_date"].max()
     else:
         min_date = pd.to_datetime("2000-01-01")
         max_date = pd.to_datetime("2023-12-31")
@@ -545,10 +552,10 @@ with tab_in_sample:
                 {"beta1": "lagged beta", "beta2": "lagged beta", "beta3": "lagged beta"}
             )
             # Convert execution_date to datetime and sort
-            data["ExecutionDate"] = pd.to_datetime(data["ExecutionDate"])
-            data.sort_values("ExecutionDate", inplace=True)
+            data["execution_date"] = pd.to_datetime(data["execution_date"])
+            data.sort_values("execution_date", inplace=True)
             # Filter data based on the selected start date
-            insample_data[target_variable] = data[data["ExecutionDate"] >= pd.to_datetime(start_date)]
+            insample_data[target_variable] = data[data["execution_date"] >= pd.to_datetime(start_date)]
 
     # Define the desired row order
     row_order = ["adjusted_r_squared", "lagged beta", "output_gap", "inflation", "const"]
@@ -567,10 +574,10 @@ with tab_in_sample:
                         ]
                         fig = px.line(
                             filtered_data,
-                            x="ExecutionDate",
+                            x="execution_date",
                             y="value",
                             title=f"{target_variable}",
-                            labels={"ExecutionDate": "Execution Date", "value": "Adjusted R-Squared"},
+                            labels={"execution_date": "Execution Date", "value": "Adjusted R-Squared"},
                         )
                         st.plotly_chart(fig, use_container_width=True)
         else:
@@ -587,12 +594,12 @@ with tab_in_sample:
                         if not filtered_data.empty:
                             # Pivot data to get coefficient and p_value as separate columns
                             pivot_data = filtered_data.pivot(
-                                index="ExecutionDate", columns="metric", values="value"
+                                index="execution_date", columns="metric", values="value"
                             ).reset_index()
                             if "coefficient" in pivot_data.columns and "p_value" in pivot_data.columns:
                                 fig = create_dual_axis_plot(
                                     data=pivot_data,
-                                    x_col="ExecutionDate",
+                                    x_col="execution_date",
                                     y1_col="coefficient",
                                     y2_col="p_value",
                                     title=f"",
@@ -627,17 +634,17 @@ with tab_simulations:
 
     if simulations_data is not None and forecasts_data is not None:
         # Convert ExecutionDate and ForecastDate to datetime
-        simulations_data["ExecutionDate"] = pd.to_datetime(simulations_data["ExecutionDate"])
-        simulations_data["ForecastDate"] = pd.to_datetime(simulations_data["ForecastDate"])
-        forecasts_data["ExecutionDate"] = pd.to_datetime(forecasts_data["ExecutionDate"])
-        forecasts_data["ForecastDate"] = pd.to_datetime(forecasts_data["ForecastDate"])
+        simulations_data["execution_date"] = pd.to_datetime(simulations_data["execution_date"])
+        simulations_data["forecast_date"] = pd.to_datetime(simulations_data["forecast_date"])
+        forecasts_data["execution_date"] = pd.to_datetime(forecasts_data["execution_date"])
+        forecasts_data["forecast_date"] = pd.to_datetime(forecasts_data["forecast_date"])
 
         # Group actuals by ForecastDate
-        actuals = forecasts_data[["ForecastDate", "Actual"]].groupby("ForecastDate").last().dropna()
+        actuals = forecasts_data[["forecast_date", "actual"]].groupby("forecast_date").last().dropna()
 
         # Determine the date range for the data
-        min_date = simulations_data["ExecutionDate"].min()
-        max_date = simulations_data["ExecutionDate"].max()
+        min_date = simulations_data["execution_date"].min()
+        max_date = simulations_data["execution_date"].max()
 
         # Add start and end date pickers
         col3, col4 = st.columns(2)
@@ -660,15 +667,15 @@ with tab_simulations:
 
         # Filter data based on the selected date range
         filtered_simulations = simulations_data[
-            (simulations_data["ExecutionDate"] >= pd.to_datetime(start_date)) &
-            (simulations_data["ExecutionDate"] <= pd.to_datetime(end_date))
+            (simulations_data["execution_date"] >= pd.to_datetime(start_date)) &
+            (simulations_data["execution_date"] <= pd.to_datetime(end_date))
         ]
 
         # --- Visualization 1: Horizon–Origin Heatmaps ---
         st.subheader("Horizon–Origin heatmap (HOP)")
 
         # Median Forecasts
-        median_forecasts = filtered_simulations.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.5).unstack()
+        median_forecasts = filtered_simulations.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.5).unstack()
         fig = px.imshow(
             median_forecasts.T,#.sort_index(ascending=False),  # Transpose to align axes
             labels={"x": "Execution Date", "y": "Horizon", "color": "Median forecast"},
@@ -680,8 +687,8 @@ with tab_simulations:
         st.plotly_chart(fig, use_container_width=True)
 
         # Prediction Interval Width (90%)
-        pi_width = filtered_simulations.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.95).unstack() - \
-                   filtered_simulations.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.05).unstack()
+        pi_width = filtered_simulations.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.95).unstack() - \
+                   filtered_simulations.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.05).unstack()
         fig = px.imshow(
             pi_width.T.sort_index(ascending=False),  # Transpose to align axes
             labels={"x": "Execution Date", "y": "Horizon", "color": "90% PI Width"},
@@ -692,8 +699,8 @@ with tab_simulations:
         st.plotly_chart(fig, use_container_width=True)
 
         # PIT (Probability Integral Transform)
-        simulated_cdf = filtered_simulations.groupby(["ExecutionDate", "Horizon"]).apply(
-            lambda group: (group["SimulatedValue"] <= group["ForecastDate"].map(actuals["Actual"])).mean()
+        simulated_cdf = filtered_simulations.groupby(["execution_date", "horizon"]).apply(
+            lambda group: (group["simulated_value"] <= group["forecast_date"].map(actuals["actual"])).mean()
         ).unstack()
         fig = px.imshow(
             simulated_cdf.T.sort_index(ascending=False),  # Transpose to align axes
@@ -708,11 +715,11 @@ with tab_simulations:
         st.subheader("Actuals and simulations")
 
         # Calculate percentiles (5th, 50th, 95th) for the fan chart
-        percentiles = filtered_simulations.groupby("ExecutionDate")["SimulatedValue"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
-        percentiles.columns = ["5th Percentile", "Median", "95th Percentile"]
+        percentiles = filtered_simulations.groupby("execution_date")["simulated_value"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
+        percentiles.columns = ["5th percentile", "median", "95th percentile"]
 
         # Merge with actuals for the time series plot
-        actuals_for_plot = forecasts_data.groupby("ForecastDate")["Actual"].last().dropna()
+        actuals_for_plot = forecasts_data.groupby("forecast_date")["actual"].last().dropna()
         combined_data = percentiles.join(actuals_for_plot, how="inner")
 
         # Create the fan chart with actuals
@@ -721,7 +728,7 @@ with tab_simulations:
         # Add fan chart (shaded area for 5th to 95th percentiles)
         fig.add_trace(go.Scatter(
             x=combined_data.index,
-            y=combined_data["95th Percentile"],
+            y=combined_data["95th percentile"],
             mode="lines",
             line=dict(width=0),
             name="95th Percentile",
@@ -729,7 +736,7 @@ with tab_simulations:
         ))
         fig.add_trace(go.Scatter(
             x=combined_data.index,
-            y=combined_data["5th Percentile"],
+            y=combined_data["5th percentile"],
             mode="lines",
             fill="tonexty",  # Fill between 5th and 95th percentiles
             fillcolor="rgba(0,100,200,0.2)",
@@ -741,7 +748,7 @@ with tab_simulations:
         # Add median line
         fig.add_trace(go.Scatter(
             x=combined_data.index,
-            y=combined_data["Median"],
+            y=combined_data["median"],
             mode="lines",
             line=dict(color="#3a6bac", width=2),
             name="Median Simulation"
@@ -750,7 +757,7 @@ with tab_simulations:
         # Add actuals line
         fig.add_trace(go.Scatter(
             x=combined_data.index,
-            y=combined_data["Actual"],
+            y=combined_data["actual"],
             mode="lines",
             line=dict(color="#c28191", width=2),
             name="Actual"
@@ -768,7 +775,7 @@ with tab_simulations:
         st.subheader("Historical actuals and projections")
 
         # Determine the available execution dates
-        available_execution_dates = sorted(simulations_data["ExecutionDate"].dropna().unique())  # Drop NaN values if any
+        available_execution_dates = sorted(simulations_data["execution_date"].dropna().unique())  # Drop NaN values if any
         available_execution_dates_str = [date.strftime("%Y-%m") for date in available_execution_dates]  # Convert to "YYYY-MM" strings
 
         if available_execution_dates_str:
@@ -793,17 +800,17 @@ with tab_simulations:
                     historical_actuals = actuals[actuals.index <= selected_execution_date]
 
                     # Projections
-                    simulations_for_execution_date = simulations_data[simulations_data["ExecutionDate"] == selected_execution_date]
+                    simulations_for_execution_date = simulations_data[simulations_data["execution_date"] == selected_execution_date]
                     projections_data = None
 
                     if not simulations_for_execution_date.empty:
                         # Calculate percentiles (5th, 50th, 95th) for the fan chart
-                        percentiles = simulations_for_execution_date.groupby("Horizon")["SimulatedValue"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
+                        percentiles = simulations_for_execution_date.groupby("horizon")["simulated_value"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
 
                         if not percentiles.empty:
-                            percentiles.columns = ["5th Percentile", "Median", "95th Percentile"]
-                            percentiles["ForecastDate"] = [selected_execution_date + pd.DateOffset(months=int(h)) for h in percentiles.index]
-                            percentiles = percentiles.set_index("ForecastDate")
+                            percentiles.columns = ["5th percentile", "median", "95th percentile"]
+                            percentiles["forecast_date"] = [selected_execution_date + pd.DateOffset(months=int(h)) for h in percentiles.index]
+                            percentiles = percentiles.set_index("forecast_date")
                             projections_data = percentiles.join(actuals, how="left")
 
                     # --- Create Two Columns for Side-by-Side Graphs ---
@@ -815,14 +822,14 @@ with tab_simulations:
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(
                             x=historical_actuals.index,
-                            y=historical_actuals["Actual"],
+                            y=historical_actuals["actual"],
                             mode="lines",
                             line=dict(color="#c28191", width=2),
                             name="Actual"
                         ))
 
                         # Add zero reference line if data includes negative values
-                        if historical_actuals["Actual"].min() < 0:
+                        if historical_actuals["actual"].min() < 0:
                             fig.add_shape(
                                 type="line",
                                 x0=historical_actuals.index.min(),
@@ -852,7 +859,7 @@ with tab_simulations:
                             # Add fan chart (shaded area for 5th to 95th percentiles)
                             fig.add_trace(go.Scatter(
                                 x=projections_data.index,
-                                y=projections_data["95th Percentile"],
+                                y=projections_data["95th percentile"],
                                 mode="lines",
                                 line=dict(width=0),
                                 name="95th Percentile",
@@ -860,7 +867,7 @@ with tab_simulations:
                             ))
                             fig.add_trace(go.Scatter(
                                 x=projections_data.index,
-                                y=projections_data["5th Percentile"],
+                                y=projections_data["5th percentile"],
                                 mode="lines",
                                 fill="tonexty",  # Fill between 5th and 95th percentiles
                                 fillcolor="rgba(0,100,200,0.2)",
@@ -872,7 +879,7 @@ with tab_simulations:
                             # Add median line
                             fig.add_trace(go.Scatter(
                                 x=projections_data.index,
-                                y=projections_data["Median"],
+                                y=projections_data["median"],
                                 mode="lines",
                                 line=dict(color="#3a6bac", width=2),
                                 name="Median Simulation"
@@ -881,14 +888,14 @@ with tab_simulations:
                             # Add actuals line
                             fig.add_trace(go.Scatter(
                                 x=projections_data.index,
-                                y=projections_data["Actual"],
+                                y=projections_data["actual"],
                                 mode="lines+markers",
                                 line=dict(color="#c28191", width=2),
                                 name="Actual"
                             ))
 
                             # Add zero reference line if data includes negative values
-                            if projections_data[["5th Percentile", "Median", "95th Percentile"]].min().min() < 0:
+                            if projections_data[["5th percentile", "median", "95th percentile"]].min().min() < 0:
                                 fig.add_shape(
                                     type="line",
                                     x0=projections_data.index.min(),
@@ -918,7 +925,7 @@ with tab_simulations:
         st.subheader("Horizon-specific simulated distributions vs actual")
 
         # Use all available forecast dates for the calendar date picker
-        available_forecast_dates = sorted(filtered_simulations["ForecastDate"].unique())
+        available_forecast_dates = sorted(filtered_simulations["forecast_date"].unique())
         if available_forecast_dates:
             # Set default to January 2025 if available, otherwise use the first available date
             default_date = pd.Timestamp("2025-01-01") if pd.Timestamp("2025-01-01") in available_forecast_dates else available_forecast_dates[0]
@@ -933,18 +940,18 @@ with tab_simulations:
             )
 
             # Filter simulations for the selected ForecastDate
-            simulations_for_date = filtered_simulations[filtered_simulations["ForecastDate"] == pd.to_datetime(selected_forecast_date)]
+            simulations_for_date = filtered_simulations[filtered_simulations["forecast_date"] == pd.to_datetime(selected_forecast_date)]
 
             # Extract the realized value for the selected ForecastDate
-            realized_values_for_date = actuals.loc[actuals.index.get_level_values("ForecastDate") == pd.to_datetime(selected_forecast_date)]
+            realized_values_for_date = actuals.loc[actuals.index.get_level_values("forecast_date") == pd.to_datetime(selected_forecast_date)]
             if not realized_values_for_date.empty:
-                realized_value = realized_values_for_date["Actual"].iloc[0]  # Take the first realized value (it's the same for all horizons)
+                realized_value = realized_values_for_date["actual"].iloc[0]  # Take the first realized value (it's the same for all horizons)
             else:
                 realized_value = None  # Handle missing realized values
 
             if not simulations_for_date.empty:
                 # Allow users to select up to 5 horizons
-                unique_horizons = sorted(simulations_for_date["Horizon"].unique())
+                unique_horizons = sorted(simulations_for_date["horizon"].unique())
                 default_horizons = [h for h in [6, 12, 24, 48, 60] if h in unique_horizons]  # Default to specific horizons if available
                 selected_horizons = st.multiselect(
                     "Select horizons to plot (Max 5)",
@@ -958,9 +965,9 @@ with tab_simulations:
                     # Group simulations by Horizon
                     fig = go.Figure()
                     for horizon in selected_horizons:
-                        horizon_data = simulations_for_date[simulations_for_date["Horizon"] == horizon]
+                        horizon_data = simulations_for_date[simulations_for_date["horizon"] == horizon]
                         fig.add_trace(go.Histogram(
-                            x=horizon_data["SimulatedValue"],
+                            x=horizon_data["simulated_value"],
                             histnorm="probability density",
                             name=f"Horizon {horizon}",
                             opacity=0.7
@@ -1008,8 +1015,8 @@ with tab_yields_1:
     sample_file_path = os.path.join(observed_yields_folder, benchmark_model, "forecasts.csv")
     if os.path.exists(sample_file_path):
         sample_data = pd.read_csv(sample_file_path)
-        sample_data = sample_data.rename(columns={"execution_date": "ExecutionDate", "forecasted_date": "ForecastDate"})
-        available_maturities = sample_data["maturity"].unique()
+        #sample_data = sample_data.rename(columns={"execution_date": "ExecutionDate", "forecasted_date": "ForecastDate"})
+        available_maturities = sample_data["maturity"].str.split(' ', expand = True)[0].unique()
     else:
         st.warning("Sample file not found. Cannot determine available maturities.")
         available_maturities = []
@@ -1092,25 +1099,32 @@ with tab_yields_1:
             if os.path.exists(forecasts_file_path_yields):
                 # Load the forecasts.csv file
                 data_yields = load_data(yields_folder_path, subfolder, model_name, "forecasts.csv")
-
+                if 'mean_simulated' in data_yields.columns:
+                    data_yields = data_yields.rename(columns={"mean_simulated": "prediction"})
+                    data_yields['maturity'] = data_yields['maturity'].astype(str)
+                    
+                if subfolder == observed_yields_folder:
+                    data_yields['maturity'] = data_yields['maturity'].str.split(' ', expand = True)[0]  # Keep only the numeric part of the maturity
+                    data_yields = data_yields.rename(columns={"forecasted_date": "forecast_date"})
+                    
                 # Ensure the required columns exist
-                required_columns_yields = ["ExecutionDate", "ForecastDate", "Prediction", "Actual", "maturity"]
+                required_columns_yields = ["execution_date", "forecast_date", "prediction", "actual", "maturity"]
                 if all(col in data_yields.columns for col in required_columns_yields):
                     # Convert ExecutionDate to datetime if not already in datetime format
-                    if not pd.api.types.is_datetime64_any_dtype(data_yields["ExecutionDate"]):
-                        data_yields["ExecutionDate"] = pd.to_datetime(data_yields["ExecutionDate"])
+                    if not pd.api.types.is_datetime64_any_dtype(data_yields["execution_date"]):
+                        data_yields["execution_date"] = pd.to_datetime(data_yields["execution_date"])
 
                     # Filter data using the selected date range and maturity
                     filtered_data_yields = data_yields[
-                        (data_yields["ExecutionDate"].dt.date >= start_date_yields) &
-                        (data_yields["ExecutionDate"].dt.date <= end_date_yields) &
+                        (data_yields["execution_date"].dt.date >= start_date_yields) &
+                        (data_yields["execution_date"].dt.date <= end_date_yields) &
                         (data_yields["maturity"] == selected_maturity)
                     ]
 
                     if not filtered_data_yields.empty:
                         # Sort data by ExecutionDate and ForecastDate
-                        filtered_data_yields = filtered_data_yields.sort_values(by=["ExecutionDate", "ForecastDate"])
-                        filtered_data_yields["Model"] = model
+                        filtered_data_yields = filtered_data_yields.sort_values(by=["execution_date", "forecast_date"])
+                        filtered_data_yields["model"] = model
                         combined_data_yields.append(filtered_data_yields)
                 else:
                     st.warning(f"Required columns are missing in the forecasts data for model: {model}, yields.")
@@ -1122,7 +1136,7 @@ with tab_yields_1:
             combined_data_yields = pd.concat(combined_data_yields, ignore_index=True)
 
             # Prepare the actuals data
-            realized_yields = combined_data_yields.groupby("ForecastDate")["Actual"].mean()
+            realized_yields = combined_data_yields.groupby("forecast_date")["actual"].mean()
 
             # Create the Plotly figure
             fig_yields = go.Figure()
@@ -1138,15 +1152,15 @@ with tab_yields_1:
             model_color_mapping_yields = {model: model_colors_yields[i] for i, model in enumerate(selected_models_yields)}
 
             for model in selected_models_yields:
-                model_data_yields = combined_data_yields[combined_data_yields["Model"] == model]
-                unique_execution_dates_yields = model_data_yields["ExecutionDate"].unique()
+                model_data_yields = combined_data_yields[combined_data_yields["model"] == model]
+                unique_execution_dates_yields = model_data_yields["execution_date"].unique()
                 
                 # Add traces for each execution date, but hide them from the legend
                 for execution_date in unique_execution_dates_yields:
-                    subset_yields = model_data_yields[model_data_yields["ExecutionDate"] == execution_date]
+                    subset_yields = model_data_yields[model_data_yields["execution_date"] == execution_date]
                     fig_yields.add_trace(go.Scatter(
-                        x=subset_yields["ForecastDate"],
-                        y=subset_yields["Prediction"],
+                        x=subset_yields["forecast_date"],
+                        y=subset_yields["prediction"],
                         mode="lines",
                         line=dict(color=model_color_mapping_yields[model], width=1),
                         opacity=0.5,
@@ -1205,8 +1219,8 @@ with tab_yields:
     sample_file_path = os.path.join(observed_yields_folder, benchmark_model, "forecasts.csv")
     if os.path.exists(sample_file_path):
         sample_data = pd.read_csv(sample_file_path)
-        sample_data = sample_data.rename(columns={"execution_date": "ExecutionDate", "forecasted_date": "ForecastDate"})
-        available_maturities = sample_data["maturity"].unique()
+        #sample_data = sample_data.rename(columns={"execution_date": "ExecutionDate", "forecasted_date": "ForecastDate"})
+        available_maturities = sample_data["maturity"].str.split(' ', expand = True)[0].unique()
     else:
         st.warning("Sample file not found. Cannot determine available maturities.")
         available_maturities = []
@@ -1268,21 +1282,21 @@ with tab_yields:
             for model, data in execution_data.items():
                 filtered_data = data[data["maturity"] == maturity]
                 if not filtered_data.empty:
-                    filtered_data["ExecutionDate"] = pd.to_datetime(filtered_data["ExecutionDate"])
+                    filtered_data["execution_date"] = pd.to_datetime(filtered_data["execution_date"])
                     
                     # Divide RMSE by 100 for the benchmark model
                     if model == f"{benchmark_model} (Benchmark)":
                         filtered_data["rmse"] = filtered_data["rmse"] / 100
                     
-                    filtered_data["Model"] = model
+                    filtered_data["model"] = model
                     combined_data.append(filtered_data)
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="ExecutionDate",
+                    x="execution_date",
                     y="rmse",
-                    color="Model",
+                    color="model",
                     title=f"RMSE by execution date",
                     labels={"rmse": "RMSE", "ExecutionDate": "Execution Date"}
                 )
@@ -1302,21 +1316,21 @@ with tab_yields:
             combined_data = []
             for model, data in horizon_data.items():
                 filtered_data = data[data["maturity"] == maturity]
-                filtered_data = filtered_data[filtered_data["Horizon"] != 0]
+                filtered_data = filtered_data[filtered_data["horizon"] != 0]
                 if not filtered_data.empty:
                     # Divide RMSE by 100 for the benchmark model
                     if model == f"{benchmark_model} (Benchmark)":
                         filtered_data["rmse"] = filtered_data["rmse"] / 100
                     
-                    filtered_data["Model"] = model
+                    filtered_data["model"] = model
                     combined_data.append(filtered_data)
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="Horizon",
+                    x="horizon",
                     y="rmse",
-                    color="Model",
+                    color="model",
                     title=f"RMSE by horizon",
                     labels={"rmse": "RMSE", "Horizon": "Horizon"}
                 )
@@ -1360,37 +1374,37 @@ with tab_yields:
 
             combined_data = []
             for model, data in forecasts_data.items():
-                if "ExecutionDate" not in data.columns or "Actual" not in data.columns or "Prediction" not in data.columns:
+                if "execution_date" not in data.columns or "actual" not in data.columns or "prediction" not in data.columns:
                     st.warning(f"Required columns are missing in the forecasts data for model: {model}")
                     continue
 
                 filtered_data = data[
                     (data["maturity"] == maturity) &
-                    (pd.to_datetime(data["ExecutionDate"]) >= pd.to_datetime(dynamic_start_date)) &
-                    (pd.to_datetime(data["ExecutionDate"]) <= pd.to_datetime(dynamic_end_date))
+                    (pd.to_datetime(data["execution_date"]) >= pd.to_datetime(dynamic_start_date)) &
+                    (pd.to_datetime(data["execution_date"]) <= pd.to_datetime(dynamic_end_date))
                 ]
                 if not filtered_data.empty:
                     # Calculate RMSE by Execution Date
                     rmse_data = (
-                        filtered_data.groupby("ExecutionDate")
-                        .apply(lambda x: np.sqrt(((x["Prediction"] - x["Actual"]) ** 2).mean()))
-                        .reset_index(name="RMSE")
+                        filtered_data.groupby("execution_date")
+                        .apply(lambda x: np.sqrt(((x["prediction"] - x["actual"]) ** 2).mean()))
+                        .reset_index(name="rmse")
                     )
                     
                     # Divide RMSE by 100 for the benchmark model
                     if model == f"{benchmark_model} (Benchmark)":
-                        rmse_data["RMSE"] = rmse_data["RMSE"] / 100
+                        rmse_data["rmse"] = rmse_data["rmse"] / 100
                     
-                    rmse_data["Model"] = model
+                    rmse_data["model"] = model
                     combined_data.append(rmse_data)
 
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="ExecutionDate",
-                    y="RMSE",
-                    color="Model",
+                    x="execution_date",
+                    y="rmse",
+                    color="model",
                     title=f"RMSE by execution date",
                     labels={"ExecutionDate": "Execution Date", "RMSE": "RMSE"}
                 )
@@ -1409,8 +1423,8 @@ with tab_yields:
             for model, data in forecasts_data.items():
                 filtered_data = data[
                     (data["maturity"] == maturity) &
-                    (pd.to_datetime(data["ExecutionDate"]) >= pd.to_datetime(dynamic_start_date)) &
-                    (pd.to_datetime(data["ExecutionDate"]) <= pd.to_datetime(dynamic_end_date))
+                    (pd.to_datetime(data["execution_date"]) >= pd.to_datetime(dynamic_start_date)) &
+                    (pd.to_datetime(data["execution_date"]) <= pd.to_datetime(dynamic_end_date))
                 ]
                 if not filtered_data.empty:
                     # Calculate RMSE by Horizon
@@ -1418,18 +1432,18 @@ with tab_yields:
 
                     # Divide RMSE by 100 for the benchmark model
                     if model == f"{benchmark_model} (Benchmark)":
-                        rmse_data["RMSE"] = rmse_data["RMSE"] / 100
+                        rmse_data["rmse"] = rmse_data["rmse"] / 100
                     
-                    rmse_data["Model"] = model
+                    rmse_data["model"] = model
                     combined_data.append(rmse_data)
 
             if combined_data:
                 combined_data = pd.concat(combined_data, ignore_index=True)
                 fig = px.line(
                     combined_data,
-                    x="Horizon",
-                    y="RMSE",
-                    color="Model",
+                    x="horizon",
+                    y="rmse",
+                    color="model",
                     title=f"RMSE by horizon",
                     labels={"Horizon": "Horizon", "RMSE": "RMSE"}
                 )
@@ -1479,11 +1493,11 @@ with tab_sim_yields:
                 simulations_data = pd.concat([pd.read_parquet(file) for file in all_parquet_files], ignore_index=True)
 
                 # Ensure the data contains the expected columns
-                required_columns = ["ForecastDate", "SimulatedValue", "Maturity", "SimulationID", "ExecutionDate", "Model", "Horizon"]
+                required_columns = ["forecast_date", "simulated_value", "maturity", "simulation_id", "execution_date", "model", "horizon"]
                 if all(col in simulations_data.columns for col in required_columns):
                     # --- Visualization 1: Full-Sample Horizon-Origin Heatmap (Median Forecasts) ---
                     st.subheader("Horizon-Origin heatmap for median forecast")
-                    median_forecasts = simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.5).unstack()
+                    median_forecasts = simulations_data.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.5).unstack()
                     fig = px.imshow(
                         median_forecasts.T,  # Transpose to align axes
                         labels={"x": "Execution Date", "y": "Horizon", "color": "Median Simulated Yield"},
@@ -1495,8 +1509,8 @@ with tab_sim_yields:
 
                     # --- Visualization 2: Full-Sample 90% Prediction Interval Width Heatmap ---
                     st.subheader("Horizon-Origin heatmap for 90% prediction interval width")
-                    pi_width = simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.95).unstack() - \
-                               simulations_data.groupby(["ExecutionDate", "Horizon"])["SimulatedValue"].quantile(0.05).unstack()
+                    pi_width = simulations_data.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.95).unstack() - \
+                               simulations_data.groupby(["execution_date", "horizon"])["simulated_value"].quantile(0.05).unstack()
                     fig = px.imshow(
                         pi_width.T,  # Transpose to align axes
                         labels={"x": "Execution Date", "y": "Horizon", "color": "90% PI Width"},
@@ -1509,9 +1523,9 @@ with tab_sim_yields:
                     # --- Visualization 3: Full-Sample PIT Heatmap ---
                     st.subheader("Horizon-Origin heatmap for probability integral transform (PIT)")
                     # Mock actuals for PIT (replace this with real actuals if available)
-                    actuals = simulations_data.groupby("ForecastDate")["SimulatedValue"].mean()
-                    simulated_cdf = simulations_data.groupby(["ExecutionDate", "Horizon"]).apply(
-                        lambda group: (group["SimulatedValue"] <= actuals.get(group["ForecastDate"].iloc[0], 0)).mean()
+                    actuals = simulations_data.groupby("forecast_date")["simulated_value"].mean()
+                    simulated_cdf = simulations_data.groupby(["execution_date", "horizon"]).apply(
+                        lambda group: (group["simulated_value"] <= actuals.get(group["forecast_date"].iloc[0], 0)).mean()
                     ).unstack()
                     fig = px.imshow(
                         simulated_cdf.T,  # Transpose to align axes
@@ -1526,15 +1540,15 @@ with tab_sim_yields:
                     st.subheader("Actuals and simulations with fan chart")
 
                     # Mock actuals data (replace with real actuals if available)
-                    actuals = simulations_data.groupby("ForecastDate")["SimulatedValue"].mean()  # Mocked actuals
+                    actuals = simulations_data.groupby("forecast_date")["simulated_value"].mean()  # Mocked actuals
                     forecasts_data = simulations_data.copy()  # Replace with actual forecast data if available
 
                     # Calculate percentiles (5th, 50th, 95th) for the fan chart
-                    percentiles = simulations_data.groupby("ExecutionDate")["SimulatedValue"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
-                    percentiles.columns = ["5th Percentile", "Median", "95th Percentile"]
+                    percentiles = simulations_data.groupby("execution_date")["simulated_value"].quantile([0.05, 0.5, 0.95]).unstack(level=-1)
+                    percentiles.columns = ["5th percentile", "median", "95th percentile"]
 
                     # Merge with actuals for the time series plot
-                    actuals_for_plot = forecasts_data.groupby("ForecastDate")["SimulatedValue"].last().dropna()
+                    actuals_for_plot = forecasts_data.groupby("forecast_date")["simulated_value"].last().dropna()
                     combined_data = percentiles.join(actuals_for_plot, how="inner")
 
                     # Create the fan chart with actuals
@@ -1543,7 +1557,7 @@ with tab_sim_yields:
                     # Add fan chart (shaded area for 5th to 95th percentiles)
                     fig.add_trace(go.Scatter(
                         x=combined_data.index,
-                        y=combined_data["95th Percentile"],
+                        y=combined_data["95th percentile"],
                         mode="lines",
                         line=dict(width=0),
                         name="95th Percentile",
@@ -1551,7 +1565,7 @@ with tab_sim_yields:
                     ))
                     fig.add_trace(go.Scatter(
                         x=combined_data.index,
-                        y=combined_data["5th Percentile"],
+                        y=combined_data["5th percentile"],
                         mode="lines",
                         fill="tonexty",  # Fill between 5th and 95th percentiles
                         fillcolor="rgba(0,100,200,0.2)",
@@ -1563,7 +1577,7 @@ with tab_sim_yields:
                     # Add median line
                     fig.add_trace(go.Scatter(
                         x=combined_data.index,
-                        y=combined_data["Median"],
+                        y=combined_data["median"],
                         mode="lines",
                         line=dict(color="#3a6bac", width=2),
                         name="Median Simulation"
@@ -1572,7 +1586,7 @@ with tab_sim_yields:
                     # Add actuals line
                     fig.add_trace(go.Scatter(
                         x=combined_data.index,
-                        y=combined_data["SimulatedValue"],
+                        y=combined_data["simulated_value"],
                         mode="lines",
                         line=dict(color="#c28191", width=2),
                         name="Actual"
@@ -1618,7 +1632,7 @@ with tab_returns:
         with returns_filters[1]:
             # Dropdown for selecting maturity
             #st.subheader("Maturity Selection")
-            available_maturities = metrics_df["Maturity (Years)"].unique()
+            available_maturities = metrics_df["maturity_years"].unique()
             selected_maturity = st.selectbox(
                 "Select maturity (years)",
                 sorted(available_maturities),
@@ -1627,7 +1641,7 @@ with tab_returns:
         with returns_filters[2]:
             # Dropdown for selecting horizon
             #st.subheader("Horizon Selection")
-            available_horizons = metrics_df["Horizon (Years)"].unique()
+            available_horizons = metrics_df["horizon_years"].unique()
             selected_horizon = st.selectbox(
                 "Select horizon (years)",
                 sorted(available_horizons),
@@ -1636,22 +1650,22 @@ with tab_returns:
 
         # Filter the DataFrame for the selected maturity and horizon
         filtered_df = metrics_df[
-            (metrics_df["Maturity (Years)"] == selected_maturity) &
-            (metrics_df["Horizon (Years)"] == selected_horizon) &
-            (metrics_df["Metric"].isin(["VaR", "CVaR", "Observed Annual Return", "Expected Returns"]))
+            (metrics_df["maturity_years"] == selected_maturity) &
+            (metrics_df["horizon_years"] == selected_horizon) &
+            (metrics_df["metric"].isin(["VaR 97", "CVaR 97", "Observed Annual Return", "Expected Annual Returns"]))
         ]
 
         # Check for duplicates
-        duplicate_rows = filtered_df[filtered_df.duplicated(subset=["Execution Date", "Metric"], keep=False)]
+        duplicate_rows = filtered_df[filtered_df.duplicated(subset=["execution_date", "metric"], keep=False)]
         if not duplicate_rows.empty:
             #st.warning("Duplicate rows detected. Aggregating duplicates by taking the mean.")
-            filtered_df = filtered_df.groupby(["Execution Date", "Metric"], as_index=False)["Value"].mean()
+            filtered_df = filtered_df.groupby(["execution_date", "metric"], as_index=False)["value"].mean()
 
         # Pivot the data to align metrics by execution date
-        pivot_df = filtered_df.pivot(index="Execution Date", columns="Metric", values="Value")
+        pivot_df = filtered_df.pivot(index="execution_date", columns="metric", values="value")
 
         # Ensure all required metrics are present
-        required_metrics = ["VaR", "CVaR", "Observed Annual Return", "Expected Returns"]
+        required_metrics = ["VaR 97", "CVaR 97", "Observed Annual Return", "Expected Annual Returns"]
         missing_metrics = [metric for metric in required_metrics if metric not in pivot_df.columns]
         if missing_metrics:
             st.warning(f"Missing the following metrics: {', '.join(missing_metrics)}")
@@ -1672,9 +1686,9 @@ with tab_returns:
             # Add Expected Returns
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["Expected Returns"],
+                y=pivot_df["Expected Annual Returns"],
                 mode="lines",
-                name="Expected Returns",
+                name="Expected Annual Return",
                 line=dict(color="#eaa121"),
                 marker=dict(size=6)
             ))
@@ -1682,23 +1696,23 @@ with tab_returns:
             # Add VaR
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["VaR"],
+                y=pivot_df["VaR 97"],
                 mode="lines",
-                name="VaR (Threshold)",
+                name="VaR (97.5)",
                 line=dict(color="#c28191") #, dash="dash"
             ))
 
             # Add CVaR
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["CVaR"],
+                y=pivot_df["CVaR 97"],
                 mode="lines",
-                name="CVaR (Tail Average)",
+                name="CVaR (97.5)",
                 line=dict(color="#aa322f") # , dash="dot"
             ))
 
             # Highlight breaches where Observed Annual Return < VaR
-            breaches = pivot_df["Observed Annual Return"] < pivot_df["VaR"]
+            breaches = pivot_df["Observed Annual Return"] < pivot_df["VaR 97"]
             fig.add_trace(go.Scatter(
                 x=pivot_df.index[breaches],
                 y=pivot_df["Observed Annual Return"][breaches],
@@ -1737,7 +1751,7 @@ def load_model_simulations(model, maturity_folder_path):
     if all_parquet_files:
         # Concatenate all parquet files for the current model
         model_simulations = pd.concat([pd.read_parquet(file) for file in all_parquet_files], ignore_index=True)
-        model_simulations["Model"] = model  # Add a column to identify the model
+        model_simulations["model"] = model  # Add a column to identify the model
         return model_simulations
     else:
         return pd.DataFrame()  # Return an empty DataFrame if no files are found
@@ -1801,7 +1815,7 @@ with tab_simulation_comparison:
             color_palette = ["#3a6bac", "#aa322f", "#eaa121", "#633d83", "#d55b20", "#427f6d", "#784722"]
 
             # Calculate percentiles and summary statistics for each model
-            summary_data = combined_data.groupby(["ExecutionDate", "Model"])["AnnualReturn"].agg(
+            summary_data = combined_data.groupby(["execution_date", "model"])["annual_returns"].agg(
                 mean="mean",
                 p5=lambda x: np.percentile(x, 5),
                 p95=lambda x: np.percentile(x, 95)
@@ -1812,14 +1826,14 @@ with tab_simulation_comparison:
 
             # Loop through each selected model and add traces
             for i, model in enumerate(selected_models):
-                model_data = summary_data[summary_data["Model"] == model]
+                model_data = summary_data[summary_data["model"] == model]
 
                 # Define the color for this model
                 model_color = color_palette[i % len(color_palette)]
 
                 # Add mean line
                 fig_time_series.add_trace(go.Scatter(
-                    x=model_data["ExecutionDate"],
+                    x=model_data["execution_date"],
                     y=model_data["mean"],
                     mode="lines",
                     name=f"{model} Mean",
@@ -1828,7 +1842,7 @@ with tab_simulation_comparison:
 
                 # Add shaded area for 5th to 95th percentiles
                 fig_time_series.add_trace(go.Scatter(
-                    x=model_data["ExecutionDate"].tolist() + model_data["ExecutionDate"].tolist()[::-1],
+                    x=model_data["execution_date"].tolist() + model_data["execution_date"].tolist()[::-1],
                     y=model_data["p95"].tolist() + model_data["p5"].tolist()[::-1],
                     fill="toself",
                     fillcolor=f"rgba({int(255 * (i / len(color_palette)))}, 100, 200, 0.2)",  # Adjust transparency of the band
@@ -1849,7 +1863,7 @@ with tab_simulation_comparison:
 
             # Date Filter for KDE
             st.subheader("Filter by Execution Date for KDE")
-            available_execution_dates = sorted(combined_data["ExecutionDate"].unique())
+            available_execution_dates = sorted(combined_data["execution_date"].unique())
             selected_execution_date = st.selectbox(
                 "Select Execution Date",
                 available_execution_dates,
@@ -1857,13 +1871,13 @@ with tab_simulation_comparison:
             )
 
             # Filter data for the selected execution date
-            execution_date_data = combined_data[combined_data["ExecutionDate"] == selected_execution_date]
+            execution_date_data = combined_data[combined_data["execution_date"] == selected_execution_date]
 
             # KDE Subplots for Each Horizon
             st.subheader(f"KDE Distributions for Execution Date: {selected_execution_date}")
 
             # Get unique horizons
-            unique_horizons = sorted(execution_date_data["Horizon (Years)"].unique())
+            unique_horizons = sorted(execution_date_data["horizon_years"].unique())
 
             # Create a 2x3 grid using Streamlit columns
             rows = []
@@ -1878,19 +1892,19 @@ with tab_simulation_comparison:
 
                 with rows[row_idx][col_idx]:
                     # Filter data for the current horizon
-                    horizon_data = execution_date_data[execution_date_data["Horizon (Years)"] == horizon]
+                    horizon_data = execution_date_data[execution_date_data["horizon_years"] == horizon]
 
                     # Create a Plotly figure for the current horizon
                     fig_kde = go.Figure()
 
                     # Loop through selected models
                     for i, model in enumerate(selected_models):
-                        model_data = horizon_data[horizon_data["Model"] == model]
+                        model_data = horizon_data[horizon_data["model"] == model]
 
                         if not model_data.empty:
                             # Calculate KDE
-                            kde = gaussian_kde(model_data["AnnualReturn"])
-                            x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
+                            kde = gaussian_kde(model_data["annual_returns"])
+                            x_range = np.linspace(model_data["annual_returns"].min(), model_data["annual_returns"].max(), 500)
                             y_kde = kde(x_range)
 
                             # Define the color for this model
@@ -1906,7 +1920,7 @@ with tab_simulation_comparison:
                             ))
 
                             # Calculate VaR (5th percentile)
-                            var_5 = np.percentile(model_data["AnnualReturn"], 5)
+                            var_5 = np.percentile(model_data["annual_returns"], 5)
 
                             # Add vertical line for VaR
                             fig_kde.add_shape(
@@ -1951,11 +1965,11 @@ with tab_simulation_comparison:
 
                 # Add simulated returns for all models
                 for i, model in enumerate(selected_models):
-                    model_data = execution_date_data[execution_date_data["Model"] == model]
+                    model_data = execution_date_data[execution_date_data["model"] == model]
 
                     if not model_data.empty:
-                        kde = gaussian_kde(model_data["AnnualReturn"])
-                        x_range = np.linspace(model_data["AnnualReturn"].min(), model_data["AnnualReturn"].max(), 500)
+                        kde = gaussian_kde(model_data["annual_returns"])
+                        x_range = np.linspace(model_data["annual_returns"].min(), model_data["annual_returns"].max(), 500)
                         y_kde = kde(x_range)
 
                         model_color = color_palette[i % len(color_palette)]
