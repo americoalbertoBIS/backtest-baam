@@ -177,7 +177,7 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US']  # Add other countries if needed , 'EA', 'UK'
+    countries = ['US', 'EA', 'UK']  # Add other countries if needed , 'EA', 'UK'
     
     # Define the subset of models to run
     run_all_models = True
