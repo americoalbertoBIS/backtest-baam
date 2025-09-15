@@ -18,8 +18,8 @@ def calculate_out_of_sample_metrics(df_predictions):
         dict: Metrics including RMSE and R-squared by horizon, execution date, and row (observation).
     """
     # Ensure necessary columns are present
-    if not {"horizon", "actual", "prediction", "execution_date", "forecasted_date"}.issubset(df_predictions.columns):
-        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecasted_date' columns.")
+    if not {"horizon", "actual", "prediction", "execution_date", "forecast_date"}.issubset(df_predictions.columns):
+        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecast_date' columns.")
 
     # Drop rows with NaN in Actual or Prediction
     df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
@@ -54,7 +54,7 @@ def calculate_out_of_sample_metrics(df_predictions):
     return {
         "by_horizon": metrics_by_horizon,
         "by_execution_date": metrics_by_execution_date,
-        "by_row": df_predictions[["execution_date", "forecasted_date", "horizon", "rmse_row"]]  # RMSE for each row
+        "by_row": df_predictions[["execution_date", "forecast_date", "horizon", "rmse_row"]]  # RMSE for each row
     }
 
 def calculate_rmse(predictions, actuals):
