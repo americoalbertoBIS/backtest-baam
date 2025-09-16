@@ -1483,7 +1483,7 @@ with tab_sim_yields:
     if selected_model and selected_maturity:
         # Adjust folder for benchmark model
         model_folder = benchmark_model if selected_model == f"{benchmark_model} (Benchmark)" else selected_model
-        maturity_folder = selected_maturity.replace(" ", "_")  # Convert maturity to folder name format
+        maturity_folder = selected_maturity + "_years"  # Convert maturity to folder name format
         folder_path = os.path.join(yields_folder_path, "estimated_yields", model_folder, "simulations", maturity_folder)
 
         if os.path.exists(folder_path):
