@@ -39,21 +39,13 @@ models_configurations = {
 
 selected_models = [
     {
-        "name": "AR(1) + Inflation (UCSV)",
+        "name": "AR(1) + Output Gap (Direct) + Inflation (UCSV) - MRM",
         "handler": ARXModel(),
         "params": {
-            "inflation_method": "ucsv",
-            "macro_forecast": "consensus",
-            "exogenous_variables": ["inflation"]
-        }
-    },
-    {
-        "name": "AR(1) + Inflation (UCSV) - MRM",
-        "handler": ARXModel(),
-        "params": {
+            "output_gap_method": "direct",
             "inflation_method": "ucsv",
             "macro_forecast": "ar_1",
-            "exogenous_variables": ["inflation"]
+            "exogenous_variables": ["output_gap", "inflation"]
         }
     },
 ]
