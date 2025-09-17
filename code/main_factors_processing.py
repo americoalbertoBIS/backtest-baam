@@ -177,10 +177,10 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US']  # Add other countries if needed , 'EA', 'UK'
+    countries = ['UK']  # Add other countries if needed , 'EA', 'UK' US
     
     # Define the subset of models to run
-    run_all_models = False
+    run_all_models = True
     
     if not run_all_models:
         models_to_run = ["Mixed_Model_MRM"]  # <-- Set your desired subset here
@@ -192,9 +192,6 @@ def main():
     # Determine the number of workers for parallel processing
     max_workers = max(1, multiprocessing.cpu_count() // 3)
     
-
-    
-
     for country in countries:
         
         # Configure logging
