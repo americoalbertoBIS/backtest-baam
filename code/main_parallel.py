@@ -185,7 +185,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['US','EA','UK'] # 'US','EA','UK'
+    countries = ['US'] # 'US','EA','UK'
     test = False
     if test:
         model_name_to_test = "AR(1)"
