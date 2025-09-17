@@ -195,7 +195,7 @@ def generate_and_save_bootstrap_indices(
     """
     records = []
     for exec_date in execution_dates:
-        available_dates = df.loc[:exec_date].index
+        available_dates = df.ffill().dropna().loc[:exec_date].index
         boot_indices = generate_bootstrap_indices(
             available_dates, num_simulations, max_horizon, 
             bootstrap_type=bootstrap_type, block_length=block_length, half_life=half_life
@@ -239,7 +239,7 @@ def parallel_generate_simulations(
     """
     #residuals = model.resid
     #bootstrapped_errors = np.random.choice(residuals, size=(num_simulations, max(horizons)), replace=True)
-    bootstrap_dates_exec = bootstrap_dates[bootstrap_dates["execution_date"] == execution_date].copy()
+    bootstrap_dates_exec = bootstrap_dates[bootstrap_dates["execution_date"] == execution_date.strftime('%Y-%m-%d')].copy()
     
     simulations = []
 
@@ -621,7 +621,8 @@ def expanding_window_backtest_double_parallel(
 def run_backtest_parallel_with_mlflow(
     country, df, horizons, target_col, model_name, model_handler, model_params,
     execution_dates, bootstrap_dates, df_consensus_gdp, df_consensus_inf, 
-    save_dir="results", num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
+    save_dir="results", num_simulations=1000, max_workers=min(os.cpu_count()//2, 12), 
+    mlflow_log=True
 ):
     """
     Runs a backtest with MLflow tracking and logs the results.
@@ -642,8 +643,9 @@ def run_backtest_parallel_with_mlflow(
         tuple: DataFrame of predictions and DataFrame of simulations, if successful.
     """
     try:
-        # Step 1: Setup MLflow
-        setup_mlflow(f"{country}_{target_col}_shadow")
+        if mlflow_log:
+            # Step 1: Setup MLflow
+            setup_mlflow(f"{country}_{target_col}_shadow")
 
         backtest_type = "Expanding Window"
 
@@ -680,23 +682,34 @@ def run_backtest_parallel_with_mlflow(
 
         # Step 5: Start a unique MLflow run for this backtest
         unique_run_name = f"{model_name} - {target_col} - {country} - {datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-        with mlflow.start_run(run_name=unique_run_name):
-            # Step 6: Extract predictions and actuals
-            predictions = {
-                horizon: df_predictions[df_predictions["horizon"] == horizon]["prediction"].tolist()
-                for horizon in horizons
-            }
-            actuals = {
-                horizon: df_predictions[df_predictions["horizon"] == horizon]["actual"].tolist()
-                for horizon in horizons
-            }
+        
+        # Step 6: Extract predictions and actuals
+        predictions = {
+            horizon: df_predictions[df_predictions["horizon"] == horizon]["prediction"].tolist()
+            for horizon in horizons
+        }
+        actuals = {
+            horizon: df_predictions[df_predictions["horizon"] == horizon]["actual"].tolist()
+            for horizon in horizons
+        }
 
-            logging.info("Log results in MLFLOW")
-            # Step 7: Log backtest results
-            cleaned_model_name = clean_model_name(model_name)
+        cleaned_model_name = clean_model_name(model_name)
+        
+        if mlflow_log:
+            with mlflow.start_run(run_name=unique_run_name):
+                logging.info("Log results in MLFLOW")
+                # Step 7: Log backtest results
+                log_backtest_results(
+                    country, df, target_col, cleaned_model_name, backtest_type, horizons,
+                    predictions, actuals, df_predictions=df_predictions, save_dir=save_dir,
+                    mlflow_log=mlflow_log
+                )
+        else:
+            # Optionally log results elsewhere or skip MLflow logging
             log_backtest_results(
                 country, df, target_col, cleaned_model_name, backtest_type, horizons,
-                predictions, actuals, df_predictions=df_predictions, save_dir=save_dir
+                predictions, actuals, df_predictions=df_predictions, save_dir=save_dir,
+                mlflow_log=False
             )
 
         logging.info(f"Backtest completed for {model_name} on {country}. Metrics logged to MLflow.")
@@ -761,7 +774,8 @@ def run_all_backtests_parallel(
     execution_dates, bootstrap_dates, 
     df_consensus_gdp, df_consensus_inf,
     save_dir="results", model_config=None, 
-    num_simulations=1000, max_workers=min(os.cpu_count()//2, 12)
+    num_simulations=1000, max_workers=min(os.cpu_count()//2, 12),
+    mlflow_log=True
 ):
     """
     Runs backtests for a single model and combines results for a specific target column.
@@ -792,7 +806,7 @@ def run_all_backtests_parallel(
 
     factors_dir = os.path.join(country_save_dir, "factors", cleaned_model_name, target_col)
     os.makedirs(factors_dir, exist_ok=True)
-
+    
     try:
         logging.info(f"Running backtest for model: {model_name} and target column: {target_col}...")
 
@@ -811,7 +825,8 @@ def run_all_backtests_parallel(
             df_consensus_inf=df_consensus_inf,
             save_dir=save_dir,
             num_simulations=num_simulations,
-            max_workers=max_workers
+            max_workers=max_workers,
+            mlflow_log=mlflow_log
         )
         
         # Save results for the model and target column

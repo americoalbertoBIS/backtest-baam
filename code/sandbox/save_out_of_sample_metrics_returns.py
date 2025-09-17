@@ -14,7 +14,7 @@ from main_factors_processing import compute_and_save_out_of_sample_metrics
 SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 from pathlib import Path
 
-countries = ['US', 'EA']
+countries = ['UK']
 models = list(models_configurations.keys())
 
 for country in countries:
@@ -68,7 +68,7 @@ save_dir = Path(SAVE_DIR) / selected_country / "returns" / "estimated_returns"
 
 # Step 2: Initialize a DataFrame to store RMSE results across models
 rmse_data = pd.DataFrame()
-models = ['AR_1','Mixed_Model']
+models = ['AR_1','Mixed_Model', 'Mixed_Model_curvMacro', 'AR_1_Output_Gap_Direct_Inflation_UCSV']
 
 # Step 3: Loop through models and load the RMSE by horizon file
 for model_name in models:

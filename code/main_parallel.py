@@ -1,4 +1,6 @@
 #%%
+import pandas as pd
+
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 import logging
@@ -52,7 +54,8 @@ def setup_logging(log_dir, country):
 
 #%%
 
-def main(country, model_name_to_test=None, target_col_to_test=None):
+def main(country, model_name_to_test=None, target_col_to_test=None,
+         execution_dates_subset=None, mlflow_log=True):
     """
     Main execution pipeline for backtesting for a specific country.
     """
@@ -67,6 +70,12 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
         num_simulations = 1000  # Number of simulations for each execution date
         max_workers = os.cpu_count() // 2  # Use half of the available CPU cores for parallel processing
 
+        country_save_dir = os.path.join(save_dir, country)
+        os.makedirs(country_save_dir, exist_ok=True)  # Ensure the folder exists
+        
+        factors_base_dir = os.path.join(country_save_dir, "factors")
+        os.makedirs(factors_base_dir, exist_ok=True)
+        
         # Step 2: Initialize DataLoader
         logging.info("Initializing DataLoader...")
         data_loader = DataLoader(country=country, variable_list=variable_list, shadow=shadow_flag)
@@ -75,12 +84,46 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
         logging.info("Loading data...")
         df_combined = data_loader.get_data()
 
-        run_all_models = False
+        # Use only valid dates for bootstrapping (skip initial NaNs)
+        available_dates = df_combined.ffill().dropna().index
+        
+        bootstrap_csv_path = os.path.join(factors_base_dir, "bootstrapped_indices.csv")
+        
+        # --- Check if bootstrapped_indices already exists and is complete ---
+        need_to_create_bootstrap = True
+        if os.path.exists(bootstrap_csv_path):
+            try:
+                df_existing_boot = pd.read_csv(bootstrap_csv_path)
+                # Check if all available_dates are present in the bootstrap file
+                existing_dates = pd.to_datetime(df_existing_boot['bootstrap_residual_date'].unique())
+                if set(available_dates).issubset(set(existing_dates)):
+                    logging.info("Existing bootstrapped_indices.csv found and contains all relevant dates. Skipping creation.")
+                    need_to_create_bootstrap = False
+                    df_boot = df_existing_boot
+            except Exception as e:
+                logging.warning(f"Could not verify existing bootstrapped_indices.csv: {e}")
+
+        if need_to_create_bootstrap:
+            logging.info("Creating bootstrapped_indices.csv...")
+            df_boot = generate_and_save_bootstrap_indices(
+                df=df_combined,
+                execution_dates=available_dates,
+                num_simulations=num_simulations,
+                max_horizon=max(horizons),
+                save_path=bootstrap_csv_path,
+                bootstrap_type="iid",  # or "iid", "half_life", "block"
+                block_length=None,
+                half_life=None
+            )
+                    
+        run_all_models = True
         if not run_all_models:
-            models = selected_models
-            
+            models_to_use = selected_models
+        else:
+            models_to_use = models
+
         # Step 4: Filter models and target columns
-        models_to_run = [model for model in models if model["name"] == model_name_to_test] if model_name_to_test else models
+        models_to_run = [model for model in models_to_use if model["name"] == model_name_to_test] if model_name_to_test else models_to_use
         target_columns_to_run = [target_col_to_test] if target_col_to_test else target_columns
 
         # Step 4: Loop through models and target columns
@@ -97,6 +140,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
             else:
                 df_consensus_gdp, df_consensus_inf = None, None
             
+            
             # --- 2. Generate execution dates for this model ---
             execution_dates = generate_execution_dates(
                 data=df_combined,
@@ -105,23 +149,9 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
                 min_years=3,
                 macro_forecast=model_config['params'].get("macro_forecast")
             )
+            if execution_dates_subset is not None:
+                execution_dates = [d for d in execution_dates if d in execution_dates_subset]
             
-            bootstrap_csv_path = os.path.join(
-                save_dir, country, "factors", clean_model_name(model_name), "bootstrapped_indices.csv"
-            )
-
-            # --- 2. Bootstrap dates to be used for all target variables ---
-            df_boot = generate_and_save_bootstrap_indices(
-                df=df_combined,
-                execution_dates=execution_dates,
-                num_simulations=num_simulations,
-                max_horizon=max(horizons),
-                save_path=bootstrap_csv_path,
-                bootstrap_type="iid",  # or "iid", "half_life", "block"
-                block_length=None,
-                half_life=None
-            )
-                
             for target_col in target_columns_to_run:
                 #logging.info(f"Checking existing results for target column: {target_col} under model: {model_name}")
 
@@ -142,7 +172,8 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
                     save_dir=save_dir,
                     model_config=model_config,  # Pass a single model configuration
                     num_simulations=num_simulations,
-                    max_workers=max_workers
+                    max_workers=max_workers, 
+                    mlflow_log=mlflow_log
                 )
 
         logging.info("Pipeline execution completed for country: %s", country)
@@ -154,15 +185,29 @@ def main(country, model_name_to_test=None, target_col_to_test=None):
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['UK'] # 'US','EA','UK'
+    countries = ['US','EA','UK'] # 'US','EA','UK'
     test = False
     if test:
-        model_name_to_test = "AR(1) + Inflation (UCSV) - MRM"
-        target_col_to_test = "beta3"
+        model_name_to_test = "AR(1)"
+        target_col_to_test = "beta1"
+        mlflow_log = False
     else:
         model_name_to_test = None
         target_col_to_test = None
 
+    run_all_execution_dates = True
+    if not run_all_execution_dates:
+        execution_dates_subset = pd.date_range(start="2010-01-01", end="2010-03-01", freq="MS")
+    else:
+        execution_dates_subset = None
+        
+        # Or, manually specify a few dates:
+        #execution_dates_subset = [
+        #    pd.Timestamp("2010-01-01"),
+        #    pd.Timestamp("2012-01-01"),
+        #    pd.Timestamp("2014-01-01"),
+        #]
+        
     # Define the log directory
     log_dir = r"C:\git\backtest-baam\logs"
 
@@ -171,6 +216,8 @@ if __name__ == "__main__":
         setup_logging(log_dir, country)  # Initialize logging for the specific country
         main(country,
              model_name_to_test=model_name_to_test, 
-             target_col_to_test=target_col_to_test)
+             target_col_to_test=target_col_to_test,
+             execution_dates_subset=execution_dates_subset, 
+             mlflow_log=mlflow_log)
 # %%
 # mlflow ui --backend-store-uri sqlite:///C:/git/backtest-baam/mlflow/mlflow.db --port 8000

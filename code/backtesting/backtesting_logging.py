@@ -73,7 +73,9 @@ def setup_mlflow(target_col):
     mlflow.set_experiment(experiment_name)
 
 
-def log_backtest_results(country, df, target_col, model_name, method_name, horizons, predictions, actuals, df_predictions=None, save_dir="results"):
+def log_backtest_results(country, df, target_col, model_name, method_name, horizons, 
+                         predictions, actuals, df_predictions=None, save_dir="results",
+                         mlflow_log=True):
     """
     Logs backtest results to MLflow, calculates metrics, and saves predictions and visualizations.
 
@@ -92,7 +94,6 @@ def log_backtest_results(country, df, target_col, model_name, method_name, horiz
         pd.DataFrame: DataFrame of metrics.
     """
     os.makedirs(save_dir, exist_ok=True)
-    all_metrics = []
 
     for horizon in horizons:
         if predictions[horizon] and actuals[horizon]:
@@ -110,35 +111,22 @@ def log_backtest_results(country, df, target_col, model_name, method_name, horiz
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             run_name = f"{model_name} - {method_name} - Horizon {horizon} months - {timestamp}"
 
-            with mlflow.start_run(nested=True, run_name=run_name):
-                mlflow.log_param("Model", model_name)
-                mlflow.log_param("Method", method_name)
-                mlflow.log_param("Horizon", horizon)
-                mlflow.log_metric("MSE", mse)
-                mlflow.log_metric("R²", r2)
-                mlflow.log_metric("RMSE", rmse)
-
-                #df_results = pd.DataFrame({'Actuals': filtered_actuals, 'Predictions': filtered_predictions})
-                #results_file = os.path.join(save_dir, f"results_{model_name}_{method_name}_{horizon}months_{timestamp}.csv")
-                #df_results.to_csv(results_file, index=False)
-                #mlflow.log_artifact(results_file)
-
-                #metrics = pd.DataFrame({
-                #    'Model': [model_name],
-                #    'Method': [method_name],
-                #    'Horizon': [horizon],
-                #    'MSE': [mse],
-                #    'R²': [r2],plot_forecasts_with_actuals
-                #    'RMSE': [rmse],
-                #    'Timestamp': [timestamp]
-                #})
-                #all_metrics.append(metrics)
+            if mlflow_log:
+                with mlflow.start_run(nested=True, run_name=run_name):
+                    mlflow.log_param("Model", model_name)
+                    mlflow.log_param("Method", method_name)
+                    mlflow.log_param("Horizon", horizon)
+                    mlflow.log_metric("MSE", mse)
+                    mlflow.log_metric("R²", r2)
+                    mlflow.log_metric("RMSE", rmse)
 
     if df_predictions is not None:
         temp_dir = os.path.join(save_dir, "temp")
+        os.makedirs(temp_dir, exist_ok=True)
         predictions_file = os.path.join(temp_dir, f"forecasts_{target_col}_{model_name}_{timestamp}.csv")
         df_predictions.to_csv(predictions_file, index=False)
-        mlflow.log_artifact(predictions_file)
+        if mlflow_log:
+            mlflow.log_artifact(predictions_file)
 
         country_save_dir = os.path.join(save_dir, country)
         factors_dir = os.path.join(country_save_dir, "factors", model_name, target_col)
@@ -146,6 +134,7 @@ def log_backtest_results(country, df, target_col, model_name, method_name, horiz
         plot_file = os.path.join(factors_dir, f"forecast_vs_actuals_{target_col}_{model_name}_{timestamp}.png")
         realized_beta = df[target_col]
         plot_forecasts_with_actuals(target_col, df_predictions, realized_beta, model=model_name, save_path=plot_file)
-        mlflow.log_artifact(plot_file)
+        if mlflow_log:
+            mlflow.log_artifact(plot_file)
 
     return None #pd.concat(all_metrics)
