@@ -190,7 +190,6 @@ if __name__ == "__main__":
     if test:
         model_name_to_test = "AR(1)"
         target_col_to_test = "beta1"
-        mlflow_log = False
     else:
         model_name_to_test = None
         target_col_to_test = None
@@ -210,7 +209,8 @@ if __name__ == "__main__":
         
     # Define the log directory
     log_dir = r"C:\git\backtest-baam\logs"
-
+    mlflow_log = False
+    
     # Run the pipeline for each country
     for country in countries:
         setup_logging(log_dir, country)  # Initialize logging for the specific country
