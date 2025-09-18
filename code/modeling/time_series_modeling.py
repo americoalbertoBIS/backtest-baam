@@ -53,7 +53,7 @@ class AR1Model(BaseModel):
 
         for _ in range(steps):
             # Forecast using the AR(1) equation: y_t = β0 + β1 * y_t-1
-            forecast = model.params[0] + model.params[1] * current_value
+            forecast = model.params.iloc[0] + model.params.iloc[1] * current_value
             forecast_values.append(forecast)
             current_value = forecast  # Update for the next step
 

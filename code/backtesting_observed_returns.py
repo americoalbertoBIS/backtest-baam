@@ -1,12 +1,15 @@
 
 from sklearn.metrics import r2_score
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 import time
 import logging
 from datetime import datetime
+import pathlib
 
 import os
 os.chdir(r'C:\git\backtest-baam\code')
@@ -14,7 +17,7 @@ from modeling.time_series_modeling import AR1Model
 from data_preparation.data_loader import DataLoaderYC
 from modeling.yield_curve_modeling import YieldCurveModel
 
-save_dir = r"C:\git\backtest-baam\data"
+save_dir = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 
 def extract_residuals(model, execution_date):
     """
@@ -106,8 +109,8 @@ def calculate_out_of_sample_metrics(df_predictions):
         dict: Metrics including RMSE and R-squared by horizon, execution date, and row (observation).
     """
     # Ensure necessary columns are present
-    if not {"horizon", "actual", "prediction", "execution_date", "forecasted_date"}.issubset(df_predictions.columns):
-        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecasted_date' columns.")
+    if not {"horizon", "actual", "prediction", "execution_date", "forecast_date"}.issubset(df_predictions.columns):
+        raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecast_date' columns.")
 
     # Drop rows with NaN in Actual or Prediction
     df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
@@ -119,33 +122,110 @@ def calculate_out_of_sample_metrics(df_predictions):
 
     # Metrics by horizon
     metrics_by_horizon = (
-        df_predictions.groupby("horizon")
+        df_predictions.groupby("horizon", group_keys=False)
         .apply(lambda group: pd.Series({
             "mse": group["squared_error"].mean(),
             "r_squared": r2_score(group["actual"], group["prediction"]),
             "rmse": np.sqrt(group["squared_error"].mean())
-        }))
-        .reset_index()
+        }), include_groups=False).reset_index()
     )
 
     # RMSE by execution date
     metrics_by_execution_date = (
-        df_predictions.groupby("execution_date")
+        df_predictions.groupby("execution_date", group_keys=False)
         .apply(lambda group: pd.Series({
             "mse": group["squared_error"].mean(),
             "r_squared": r2_score(group["actual"], group["prediction"]),
             "rmse": np.sqrt(group["squared_error"].mean())
-        }))
+        }), include_groups=False)
         .reset_index()
     )
 
     return {
         "by_horizon": metrics_by_horizon,
         "by_execution_date": metrics_by_execution_date,
-        "by_row": df_predictions[["execution_date", "forecasted_date", "horizon", "rmse_row"]]  # RMSE for each row
+        "by_row": df_predictions[["execution_date", "forecast_date", "horizon", "rmse_row"]]  # RMSE for each row
     }
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+def calculate_and_save_metrics(df, output_dir):
+    outofsample_metrics_by_horizon = []
+    outofsample_metrics_by_exec_date = []
+    outofsample_metrics = []
+    for maturity in df['maturity'].unique():
+        temp = df[df['maturity'] == maturity].copy()
+        metrics = calculate_out_of_sample_metrics(temp)
+        metrics["by_horizon"]['maturity'] = maturity
+        metrics["by_execution_date"]['maturity'] = maturity
+        metrics["by_row"]['maturity'] = maturity
+        outofsample_metrics_by_horizon.append(metrics["by_horizon"])
+        outofsample_metrics_by_exec_date.append(metrics["by_execution_date"])
+        outofsample_metrics.append(metrics["by_row"])
+
+    # Save metrics
+    pd.concat(outofsample_metrics_by_horizon).to_csv(output_dir / "outofsample_metrics_by_horizon.csv", index=False)
+    pd.concat(outofsample_metrics_by_exec_date).to_csv(output_dir / "outofsample_metrics_by_execution_date.csv", index=False)
+    pd.concat(outofsample_metrics).to_csv(output_dir / "outofsample_metrics_by_row.csv", index=False)
+    
+def calculate_risk_metrics_long(sim_df, value_col, observed_col=None, expected_col=None, quantiles=[0.95, 0.975, 0.99]):
+    """
+    Calculate VaR, CVaR, volatility, and add observed/expected returns in long format.
+    sim_df: DataFrame with columns ['execution_date', 'maturity', 'horizon', value_col, ...]
+    observed_col: column name for observed returns (optional)
+    expected_col: column name for expected returns (optional)
+    Returns: long-format DataFrame with columns:
+        ['execution_date', 'maturity', 'horizon', 'metric', 'value']
+    """
+    metrics = []
+    grouped = sim_df.groupby(["execution_date", "maturity", "horizon"])
+    for (execution_date, maturity, horizon), group in grouped:
+        values = group[value_col].dropna().values
+        if len(values) == 0:
+            continue
+        volatility = np.std(values)
+        metrics.append({
+            "execution_date": execution_date,
+            "maturity": maturity,
+            "horizon": horizon,
+            "metric": "volatility",
+            "value": volatility
+        })
+        for q in quantiles:
+            var = np.quantile(values, 1 - q)
+            cvar = values[values <= var].mean() if np.any(values <= var) else np.nan
+            metrics.append({
+                "execution_date": execution_date,
+                "maturity": maturity,
+                "horizon": horizon,
+                "metric": f"VaR {int(q*100)}",
+                "value": var
+            })
+            metrics.append({
+                "execution_date": execution_date,
+                "maturity": maturity,
+                "horizon": horizon,
+                "metric": f"CVaR {int(q*100)}",
+                "value": cvar
+            })
+        # Observed and expected returns (if provided)
+        if observed_col and observed_col in group.columns:
+            obs_val = group[observed_col].mean()
+            metrics.append({
+                "execution_date": execution_date,
+                "maturity": maturity,
+                "horizon": horizon,
+                "metric": f"Observed {value_col.replace('_', ' ').title()}",
+                "value": obs_val
+            })
+        if expected_col and expected_col in group.columns:
+            exp_val = group[expected_col].mean()
+            metrics.append({
+                "execution_date": execution_date,
+                "maturity": maturity,
+                "horizon": horizon,
+                "metric": f"Expected {value_col.replace('_', ' ').title()}",
+                "value": exp_val
+            })
+    return pd.DataFrame(metrics)
 
 def parallel_generate_simulations(
     model, model_name, latest_obs, horizons, execution_date, num_simulations=1000
@@ -223,7 +303,7 @@ def process_single_simulation(
             forecast_date = execution_date + pd.DateOffset(months=horizon)
 
             # Forecast value based on AR(1) equation: y_t = β0 + β1 * y_t-1 + ε_t
-            forecast_value = model.params[0] + model.params[1] * current_value  # Intercept + AR(1) term
+            forecast_value = model.params.iloc[0] + model.params.iloc[1] * current_value  # Intercept + AR(1) term
 
             # Add bootstrapped error
             forecast_value += bootstrapped_errors[horizon - 1]
@@ -233,12 +313,12 @@ def process_single_simulation(
 
             # Append simulation result
             simulation_results.append({
-                "Model": model_name,
-                "ExecutionDate": execution_date,
-                "ForecastDate": forecast_date,
-                "Horizon": horizon,
-                "SimulationID": sim_id,
-                "SimulatedValue": forecast_value
+                "model": model_name,
+                "execution_date": execution_date,
+                "forecast_date": forecast_date,
+                "horizon": horizon,
+                "simulation_id": sim_id,
+                "simulated_value": forecast_value
             })
 
     except Exception as e:
@@ -261,7 +341,8 @@ def process_forecast_outer(args):
     try:
         maturity, series, execution_date, forecast_horizon, obs_model_dir = args
         forecast_results = []
-
+        forecast_results_annual = []
+        
         # Ensure at least 3 years (36 months) of historical data is available
         min_data_points = 36
         train_data = pd.DataFrame(series[:execution_date], columns = [maturity])
@@ -280,6 +361,7 @@ def process_forecast_outer(args):
                 target_col=maturity
             )
         
+        # create simulations
         latest_observation = train_data[maturity].iloc[-1]  # Last observed value (starting point for simulations)
         simulations = parallel_generate_simulations(
                 model=fitted_model,
@@ -287,17 +369,66 @@ def process_forecast_outer(args):
                 latest_obs=latest_observation,
                 horizons=np.arange(1, forecast_horizon + 1),
                 execution_date=execution_date,
-                num_simulations=1000  # Example: 1000 simulations
+                num_simulations=10  # Example: 1000 simulations
             )
-    
+        
+        MONTHS_IN_YEAR = 12
+
+        # Existing code: save raw simulations
         maturity_dir = os.path.join(obs_model_dir, "simulations", f"{maturity.replace(' ', '_').replace('years', 'maturity')}")
         os.makedirs(maturity_dir, exist_ok=True)
-        simulations_file = os.path.join(maturity_dir, f"simulations_{execution_date.strftime('%d%m%Y')}.parquet")
+        #simulations_file = os.path.join(maturity_dir, f"simulations_{execution_date.strftime('%d%m%Y')}.parquet")
+
+        # --- Save monthly and annual returns in long format ---
+        monthly_dir = obs_model_dir / "monthly" / "simulations" / f"{maturity.split()[0]}_years"
+        annual_dir = obs_model_dir / "annual"  / "simulations" / f"{maturity.split()[0]}_years"
+        monthly_dir.mkdir(parents=True, exist_ok=True)
+        annual_dir.mkdir(parents=True, exist_ok=True)
+                
+        # transform simulations dict into dataframe
         simulations_df = pd.DataFrame(simulations)
         simulations_df['maturity'] = maturity
-        simulations_df.to_parquet(simulations_file, index=False)
-        #logging.info(f"Simulations saved for maturity {maturity}, execution date {execution_date} to {simulations_file}")
-        
+
+        # Pivot so each column is a simulation, each row is a forecast date
+        monthly_returns = simulations_df.pivot(index="forecast_date", columns="simulation_id", values="simulated_value")
+        monthly_returns.index.name = "forecast_date"
+
+        # Save Monthly Returns in long format
+        monthly_returns_long_format = monthly_returns.reset_index().melt(
+            id_vars=["forecast_date"],
+            var_name="simulation_id",
+            value_name="monthly_returns"
+        )
+        monthly_returns_long_format["maturity"] = maturity
+        monthly_returns_long_format["execution_date"] = execution_date
+        monthly_returns_long_format["horizon"] = (
+            (monthly_returns_long_format["forecast_date"].dt.to_period('M') -
+            monthly_returns_long_format["execution_date"].dt.to_period('M'))
+        ).apply(lambda x: x.n)
+        monthly_file_path = monthly_dir / f"simulations_{execution_date.strftime('%d%m%Y')}.parquet"
+        monthly_returns_long_format.to_parquet(monthly_file_path, index=False)
+
+        # Calculate annual returns (arithmetic sum, not compounded)
+        annual_returns = monthly_returns.groupby(np.arange(len(monthly_returns)) // MONTHS_IN_YEAR).sum()
+        annual_returns.index.name = "index"
+
+        # Save Annual Returns in long format
+        annual_returns_long_format = annual_returns.reset_index().melt(
+            id_vars=["index"],
+            var_name="simulation_id",
+            value_name="annual_returns"
+        )
+        annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "horizon_years"})
+        annual_returns_long_format["horizon_years"] = annual_returns_long_format["horizon_years"] + 1
+        annual_returns_long_format["maturity"] = maturity
+        annual_returns_long_format["execution_date"] = execution_date
+        annual_returns_long_format["forecast_date"] = [
+                pd.to_datetime(execution_date) + pd.DateOffset(years=int(h))
+                for h in annual_returns_long_format["horizon_years"]
+            ]
+        annual_file_path = annual_dir / f"simulations_{execution_date.strftime('%d%m%Y')}.parquet"
+        annual_returns_long_format.to_parquet(annual_file_path, index=False)
+
         # Extract residuals (in-sample, based on train_data)
         residuals = extract_residuals(fitted_model, execution_date)
         residuals['maturity'] = maturity
@@ -324,21 +455,82 @@ def process_forecast_outer(args):
             {
                 "maturity": maturity,
                 "execution_date": execution_date,
-                "forecasted_date": forecast_index[i],
+                "forecast_date": forecast_index[i],
                 "horizon": horizons[i],
                 "prediction": yld_forecast[i],
                 "actual": actuals.iloc[i] if i < len(actuals) else np.nan
             }
             for i in range(len(forecast_index))
         ])
+        
+        forecast_df = pd.DataFrame(forecast_results).sort_values("forecast_date")
+        monthly_returns_long_format = monthly_returns_long_format.merge(
+            forecast_df[["forecast_date", "maturity", "execution_date", "horizon", "actual", "prediction"]],
+            on=["forecast_date", "maturity", "execution_date", "horizon"],
+            how="left"
+        )
+        monthly_metrics_long = calculate_risk_metrics_long(
+            monthly_returns_long_format,
+            value_col="monthly_returns",
+            observed_col="actual",
+            expected_col="prediction",
+            quantiles=[0.95, 0.975, 0.99]
+        )
+        
+        # Calculate annual returns (sequential blocks, not rolling)
+        annual_returns_df = (
+            forecast_df[['maturity', 'execution_date', 'forecast_date', 'prediction', 'actual']]
+            .assign(block=lambda x: np.arange(len(x)) // MONTHS_IN_YEAR)
+            .groupby(['maturity', 'execution_date', 'block'])
+            .agg({
+                'prediction': 'sum',
+                'actual': 'sum',
+                'forecast_date': 'first'  # Start date of each annual block
+            })
+            .reset_index()
+            .rename(columns={'block': 'horizon_years'})
+        )
 
-        return forecast_results, residuals, insample_metrics
+        # Adjust horizon_years to start from 1
+        annual_returns_df['horizon_years'] = annual_returns_df['horizon_years'] + 1
+        annual_returns_df["forecast_date"] = [
+                pd.to_datetime(execution_date) + pd.DateOffset(years=int(h))
+                for h in annual_returns_df["horizon_years"]
+            ]
+        annual_returns_df = annual_returns_df.rename(columns={
+                    "horizon_years": "horizon",
+                    "annual_return": "prediction",
+                    "annual_actual": "actual"
+                })
+
+        annual_returns_long_format = annual_returns_long_format.rename(columns={"horizon_years": "horizon"})
+                
+        annual_returns_long_format = annual_returns_long_format.merge(
+            annual_returns_df[["forecast_date", "maturity", "execution_date", "horizon", "actual", "prediction"]],
+            left_on=["forecast_date", "maturity", "execution_date", "horizon"],
+            right_on=["forecast_date", "maturity", "execution_date", "horizon"],
+            how="left"
+        )
+        
+        annual_metrics_long = calculate_risk_metrics_long(
+            annual_returns_long_format,
+            value_col="annual_returns",
+            observed_col="actual",
+            expected_col="prediction",
+            quantiles=[0.95, 0.975, 0.99]
+        )
+        
+        annual_returns_dict = annual_returns_df.to_dict('records')
+        forecast_results_annual.extend(annual_returns_dict)
+        
+        return forecast_results_annual, forecast_results, residuals, insample_metrics, monthly_metrics_long, annual_metrics_long
+    
     except Exception as e:
         logging.error(f"Error in process_forecast_outer: {e}")
         return []
 
 
-def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_outer_workers=4):
+def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_outer_workers=4, subset_execution_dates=None):
     """
     Parallelized generation of deterministic forecasts for observed yields.
 
@@ -354,8 +546,11 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
 
     tasks = []
     forecast_results = []
+    forecast_results_annual = []
     insample_residuals = []
     insample_metrics = []
+    risk_metrics_monthly = []
+    risk_metrics_annual = []
     
     # Minimum data points required (3 years of monthly data)
     min_data_points = 36
@@ -363,7 +558,8 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
     # Prepare tasks for parallel processing
     for maturity in observed_df.columns:
         series = observed_df[maturity].dropna()
-        for execution_date in series.index:
+        execution_dates = subset_execution_dates if subset_execution_dates is not None else series.index
+        for execution_date in execution_dates:
             # Ensure at least 3 years of data before the execution date
             train_data = series[:execution_date]
             if len(train_data) < min_data_points:
@@ -382,11 +578,15 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
 
         for future in as_completed(futures):
             try:
-                forecasts, residuals, metrics = future.result()
+                (forecast_annual, forecasts, residuals, 
+                 metrics, monthly_metrics_long, annual_metrics_long) = future.result()
                 #forecast_results.extend(future.result())
+                forecast_results_annual.extend(forecast_annual)
                 forecast_results.extend(forecasts)
-                insample_residuals.append(residuals)
                 insample_metrics.extend(metrics)
+                insample_residuals.append(residuals)
+                risk_metrics_monthly.append(monthly_metrics_long)
+                risk_metrics_annual.append(annual_metrics_long)
                 # Update progress
                 completed_tasks += 1
                 if completed_tasks % 10 == 0 or completed_tasks == total_tasks:
@@ -400,94 +600,95 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
     end_time = time.time()  # End the timer
     logging.info(f"Total execution time: {end_time - start_time:.2f} seconds")
 
-    return pd.DataFrame(forecast_results), pd.concat(insample_residuals), pd.DataFrame(insample_metrics)
+    return pd.DataFrame(forecast_results_annual), pd.DataFrame(forecast_results), pd.concat(insample_residuals), pd.DataFrame(insample_metrics), pd.concat(risk_metrics_monthly), pd.concat(risk_metrics_annual)
     #return forecasts_df
 
 
 if __name__ == "__main__":
-    country = 'US' # US EA UK
+    countries = ['US', 'EA', 'UK']
     
-    # Configure logging
-    logging.basicConfig(
-        filename=rf'C:\git\backtest-baam\logs\{country}_observed_yields_AR_1.log',
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    for country in countries:
+        # Configure logging
+        logging.basicConfig(
+            filename=rf'C:\git\backtest-baam\logs\{country}_observed_returns_AR_1.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
 
-    obs_dir = fr"{save_dir}\{country}\returns\observed_returns"
-    os.makedirs(obs_dir, exist_ok=True)
+        # Set base folder
+        base_dir = pathlib.Path(save_dir) / country / "returns" / "observed_returns" / "AR_1"
+        base_dir.mkdir(parents=True, exist_ok=True)
 
-    obs_model_dir = fr"{obs_dir}\AR_1"
-    os.makedirs(obs_model_dir, exist_ok=True)
+        # Subfolders
+        monthly_dir = base_dir / "monthly"
+        annual_dir = base_dir / "annual"
+        monthly_dir.mkdir(parents=True, exist_ok=True)
+        annual_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load the yield curve data
-    data_loader = DataLoaderYC(r'L:\\RMAS\\Resources\\BAAM\\OpenBAAM\\Private\\Data\\BaseDB.mat')
-    _, _, _ = data_loader.load_data()
-    if country == 'EA':
-        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
-    else:
-        selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
-    # Update model parameters for the yield curve model
-    modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})
-    yield_curve_model = YieldCurveModel(selected_curve_data, modelParams)
+        # Load the yield curve data
+        data_loader = DataLoaderYC(r'L:\\RMAS\\Resources\\BAAM\\OpenBAAM\\Private\\Data\\BaseDB.mat')
+        _, _, _ = data_loader.load_data()
+        if country == 'EA':
+            selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
+        else:
+            selectedCurveName, selected_curve_data, modelParams = data_loader.process_data(country)
+        # Update model parameters for the yield curve model
+        modelParams.update({'minMaturity': 0.08, 'maxMaturity': 10, 'lambda1fixed': 0.7173})
+        yield_curve_model = YieldCurveModel(selected_curve_data, modelParams)
 
-    # Extract observed yields and convert dates
-    dates_str = yield_curve_model.dates_str
-    observed_yields = yield_curve_model.yieldsObservedAgg
-    maturities = yield_curve_model.uniqueTaus
+        # Extract observed yields and convert dates
+        dates_str = yield_curve_model.dates_str
+        observed_yields = yield_curve_model.yieldsObservedAgg
+        maturities = yield_curve_model.uniqueTaus
 
-    # Create a DataFrame for observed yields
-    observed_yields_df = pd.DataFrame(
-        observed_yields,
-        columns=[f'{tau} years' for tau in maturities],
-        index=dates_str[-len(observed_yields):]
-    )
-    observed_yields_df.index = pd.to_datetime(observed_yields_df.index)
-    observed_yields_df_resampled = observed_yields_df.resample('MS').mean()
-    #observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]  # Drop the first column (e.g., 0.08333 years)
-    observed_returns_df = observed_yields_df_resampled.pct_change(fill_method=None).dropna(how='all')
-    
-    # Run forecasts with a timer
-    df_predictions, df_insample_residuals, df_insample_metrics = run_forecasts_parallel(
-        country, 
-        observed_returns_df,
-        obs_model_dir,
-        forecast_horizon=60,
-        num_outer_workers=4  
-    )
-    
-    if df_predictions is not None:
-            predictions_file = os.path.join(obs_model_dir, f"forecasts.csv")
-            df_predictions.to_csv(predictions_file, index=False)
-            
-            # Save residuals
-            residuals_file = os.path.join(obs_model_dir, f"residuals.csv")
-            df_insample_residuals.to_csv(residuals_file, index=False)
+        # Create a DataFrame for observed yields
+        observed_yields_df = pd.DataFrame(
+            observed_yields,
+            columns=[f'{tau} years' for tau in maturities],
+            index=dates_str[-len(observed_yields):]
+        )
+        observed_yields_df.index = pd.to_datetime(observed_yields_df.index)
+        observed_yields_df_resampled = observed_yields_df.resample('MS').mean()
+        #observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]  # Drop the first column (e.g., 0.08333 years)
+        observed_returns_df = observed_yields_df_resampled.pct_change(fill_method=None).dropna(how='all')
+        
+        # Example: Only use the first 5 dates for each maturity
+        subset_execution_dates = {}
+        for maturity in observed_returns_df.columns:
+            custom_dates = pd.date_range(start="2002-01-01", end="2002-05-01", freq="MS")
+        
+        # Run forecasts with a timer
+        (df_predictions_annual, df_predictions, df_insample_residuals, 
+        df_insample_metrics, df_monthly_metrics_long, df_annual_metrics_long) = run_forecasts_parallel(
+            observed_returns_df,
+            base_dir,
+            forecast_horizon=60,
+            num_outer_workers=4, 
+            subset_execution_dates=custom_dates
+        )
+        
+        if df_predictions is not None:
+                logging.info("Save results")
+                # save average forecasts
+                predictions_file = os.path.join(monthly_dir, f"forecasts.csv")
+                df_predictions.to_csv(predictions_file, index=False)
+                # save risk metrics
+                risk_metrics_file_monthly = os.path.join(monthly_dir, f"risk_metrics.csv")
+                df_monthly_metrics_long.to_csv(risk_metrics_file_monthly, index=False)
+                # save out of sample metrics
+                calculate_and_save_metrics(df_predictions, monthly_dir)
+                # Save residuals
+                residuals_file = os.path.join(monthly_dir, f"residuals.csv")
+                df_insample_residuals.to_csv(residuals_file, index=False)
 
-            # Save in sample metrics
-            insample_metrics_file = os.path.join(obs_model_dir, f"insample_metrics.csv")
-            df_insample_metrics.to_csv(insample_metrics_file, index=False)            
-            
-            outofsample_metrics_by_horizon = []
-            outofsample_metrics_by_exec_date = []
-            outofsample_metrics = []
-            for maturity in df_predictions['maturity'].unique():
-                temp = df_predictions[df_predictions['maturity']==maturity].copy()
-                outofsample_metrics_temp = calculate_out_of_sample_metrics(temp)
-                outofsample_metrics_temp["by_horizon"]['maturity'] = maturity
-                outofsample_metrics_temp["by_execution_date"]['maturity'] = maturity
-                outofsample_metrics_temp["by_row"]['maturity'] = maturity
-                outofsample_metrics_by_horizon.append(outofsample_metrics_temp["by_horizon"])
-                outofsample_metrics_by_exec_date.append(outofsample_metrics_temp["by_execution_date"])
-                outofsample_metrics.append(outofsample_metrics_temp["by_row"])
-
-            logging.info("Save results")
-            # Save out of sample metrics metrics to CSV
-            metrics_by_horizon_file = os.path.join(obs_model_dir, f"outofsample_metrics_by_horizon.csv")
-            pd.concat(outofsample_metrics_by_horizon).to_csv(metrics_by_horizon_file, index=False)
-
-            metrics_by_execution_date_file = os.path.join(obs_model_dir, f"outofsample_metrics_by_execution_date.csv")
-            pd.concat(outofsample_metrics_by_exec_date).to_csv(metrics_by_execution_date_file, index=False)
-
-            metrics_by_row_file = os.path.join(obs_model_dir, f"outofsample_metrics_by_row.csv")
-            pd.concat(outofsample_metrics).to_csv(metrics_by_row_file, index=False)
+                # Save in sample metrics
+                insample_metrics_file = os.path.join(monthly_dir, f"insample_metrics.csv")
+                df_insample_metrics.to_csv(insample_metrics_file, index=False)  
+                # save average forecast
+                predictions_annual_file = os.path.join(annual_dir, f"forecasts.csv")
+                df_predictions_annual.to_csv(predictions_annual_file, index=False)
+                # save risk metrics
+                risk_metrics_file_annual = os.path.join(annual_dir, f"risk_metrics.csv")
+                df_annual_metrics_long.to_csv(risk_metrics_file_annual, index=False)
+                # save out of sample metrics
+                calculate_and_save_metrics(df_predictions_annual, annual_dir)
