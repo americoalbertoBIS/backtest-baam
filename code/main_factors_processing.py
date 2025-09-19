@@ -143,7 +143,9 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
                                                                                             "forecast_date", "maturity"]].reset_index(drop=True)
 
         # Calculate and save returns
-        processor.calculate_and_save_returns()  # Save monthly and annual returns
+        processor.calculate_and_save_returns_simulations()  # Save monthly and annual returns
+        monthly_returns_df, annual_returns_df = processor.get_mean_simulated_returns()
+        # Save and compute metrics in main_factors_processing.py
         processor.compute_var_cvar_vol()
 
         #aligned_data = pd.concat(
@@ -162,7 +164,7 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
         #    "maturity": aligned_data.index.get_level_values(1)
         #}).reset_index(drop=True)
 
-        return mean_simulated_yields_and_actual_aligned
+        return mean_simulated_yields_and_actual_aligned, monthly_returns_df, annual_returns_df
 
     except ValueError as e:
         # Log the error and skip processing for this execution date
@@ -217,8 +219,10 @@ def main():
 
         # Iterate over the selected beta combinations (from models_configurations)
         for model_name, model_config in selected_models_configurations.items():
-            all_predictions = []  # List to store predictions for all execution dates
-            
+            all_yields_predictions = []  # List to store predictions for all execution dates
+            all_monthly_returns = []
+            all_annual_returns = []
+
             logger.info(f"Processing model: {model_name} for country: {country}")
 
             # Get all execution dates for the current country and model combination
@@ -277,16 +281,38 @@ def main():
 
                 for future in tqdm(as_completed(futures), total=len(futures), desc=f"Processing {model_name} for {country}"):
                     try:
-                        predictions = future.result()
-                        all_predictions.append(predictions)  # Collect predictions
+                        yields_predictions, monthly_returns_df, annual_returns_df = future.result()
+                        all_yields_predictions.append(yields_predictions)  # Collect predictions
+                        all_monthly_returns.append(monthly_returns_df)
+                        all_annual_returns.append(annual_returns_df)                        
                     except Exception as e:
                         logger.error(f"Error in parallel processing: {e}", exc_info=True)
 
             # Combine all predictions into a single DataFrame
-            df_predictions = pd.concat(all_predictions, ignore_index=True)
+            df_yields__predictions = pd.concat(all_yields_predictions, ignore_index=True)
+            compute_and_save_out_of_sample_metrics(df_yields__predictions, Path(SAVE_DIR) / country / "yields" / "estimated_yields" / model_name)
 
-            compute_and_save_out_of_sample_metrics(df_predictions, Path(SAVE_DIR) / country / "yields" / "estimated_yields" / model_name)
+            # Save returns forecasts.csv
+            monthly_returns_all = pd.concat(all_monthly_returns, ignore_index=True)
+            annual_returns_all = pd.concat(all_annual_returns, ignore_index=True)
 
+            monthly_returns_file = Path(SAVE_DIR) / country / "returns" / "estimated_returns" / model_name / "monthly" / "forecasts.csv"
+            annual_returns_file = Path(SAVE_DIR) / country / "returns" / "estimated_returns" / model_name / "annual" / "forecasts.csv"
+            monthly_returns_file.parent.mkdir(parents=True, exist_ok=True)
+            annual_returns_file.parent.mkdir(parents=True, exist_ok=True)
+
+            monthly_returns_all.to_csv(monthly_returns_file, index=False)
+            annual_returns_all.to_csv(annual_returns_file, index=False)
+
+            compute_and_save_out_of_sample_metrics(
+                monthly_returns_all, 
+                Path(SAVE_DIR) / country / "returns" / "estimated_returns" / model_name / "monthly"
+            )
+            compute_and_save_out_of_sample_metrics(
+                annual_returns_all, 
+                Path(SAVE_DIR) / country / "returns" / "estimated_returns" / model_name / "annual"
+            )
+            
     logger.info("Out-of-sample metrics saved successfully.")
 
 if __name__ == "__main__":
