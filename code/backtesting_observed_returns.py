@@ -113,8 +113,9 @@ def calculate_out_of_sample_metrics(df_predictions):
         raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecast_date' columns.")
 
     # Drop rows with NaN in Actual or Prediction
+    df_predictions = df_predictions.copy()
     df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
-
+    df_predictions = df_predictions.replace([np.inf, -np.inf], np.nan).dropna(subset=["actual", "prediction"])
     # Calculate residuals and squared errors
     df_predictions["residual"] = df_predictions["actual"] - df_predictions["prediction"]
     df_predictions["squared_error"] = df_predictions["residual"] ** 2
@@ -346,6 +347,7 @@ def process_forecast_outer(args):
         # Ensure at least 3 years (36 months) of historical data is available
         min_data_points = 36
         train_data = pd.DataFrame(series[:execution_date], columns = [maturity])
+        train_data = train_data.replace([np.inf, -np.inf], np.nan).dropna()
         if len(train_data) < min_data_points:
             logging.warning(f"Not enough data for maturity {maturity} and execution date {execution_date}. Skipping.")
             return []  # Skip this task
@@ -373,11 +375,6 @@ def process_forecast_outer(args):
             )
         
         MONTHS_IN_YEAR = 12
-
-        # Existing code: save raw simulations
-        maturity_dir = os.path.join(obs_model_dir, "simulations", f"{maturity.replace(' ', '_').replace('years', 'maturity')}")
-        os.makedirs(maturity_dir, exist_ok=True)
-        #simulations_file = os.path.join(maturity_dir, f"simulations_{execution_date.strftime('%d%m%Y')}.parquet")
 
         # --- Save monthly and annual returns in long format ---
         monthly_dir = obs_model_dir / "monthly" / "simulations" / f"{maturity.split()[0]}_years"
@@ -664,7 +661,7 @@ if __name__ == "__main__":
             base_dir,
             forecast_horizon=60,
             num_outer_workers=4, 
-            subset_execution_dates=custom_dates
+            subset_execution_dates=None
         )
         
         if df_predictions is not None:
