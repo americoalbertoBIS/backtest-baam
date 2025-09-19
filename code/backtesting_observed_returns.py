@@ -1,5 +1,9 @@
 
 from sklearn.metrics import r2_score
+import warnings
+from sklearn.exceptions import UndefinedMetricWarning
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -113,8 +117,9 @@ def calculate_out_of_sample_metrics(df_predictions):
         raise ValueError("df_predictions must contain 'horizon', 'actual', 'prediction', 'execution_date', and 'forecast_date' columns.")
 
     # Drop rows with NaN in Actual or Prediction
+    df_predictions = df_predictions.copy()
     df_predictions = df_predictions.dropna(subset=["actual", "prediction"])
-
+    df_predictions = df_predictions.replace([np.inf, -np.inf], np.nan).dropna(subset=["actual", "prediction"])
     # Calculate residuals and squared errors
     df_predictions["residual"] = df_predictions["actual"] - df_predictions["prediction"]
     df_predictions["squared_error"] = df_predictions["residual"] ** 2
@@ -346,6 +351,7 @@ def process_forecast_outer(args):
         # Ensure at least 3 years (36 months) of historical data is available
         min_data_points = 36
         train_data = pd.DataFrame(series[:execution_date], columns = [maturity])
+        train_data = train_data.replace([np.inf, -np.inf], np.nan).dropna()
         if len(train_data) < min_data_points:
             logging.warning(f"Not enough data for maturity {maturity} and execution date {execution_date}. Skipping.")
             return []  # Skip this task
@@ -373,11 +379,6 @@ def process_forecast_outer(args):
             )
         
         MONTHS_IN_YEAR = 12
-
-        # Existing code: save raw simulations
-        maturity_dir = os.path.join(obs_model_dir, "simulations", f"{maturity.replace(' ', '_').replace('years', 'maturity')}")
-        os.makedirs(maturity_dir, exist_ok=True)
-        #simulations_file = os.path.join(maturity_dir, f"simulations_{execution_date.strftime('%d%m%Y')}.parquet")
 
         # --- Save monthly and annual returns in long format ---
         monthly_dir = obs_model_dir / "monthly" / "simulations" / f"{maturity.split()[0]}_years"
@@ -608,6 +609,7 @@ if __name__ == "__main__":
     countries = ['US', 'EA', 'UK']
     
     for country in countries:
+        print(country)
         # Configure logging
         logging.basicConfig(
             filename=rf'C:\git\backtest-baam\logs\{country}_observed_returns_AR_1.log',
@@ -664,7 +666,7 @@ if __name__ == "__main__":
             base_dir,
             forecast_horizon=60,
             num_outer_workers=4, 
-            subset_execution_dates=custom_dates
+            subset_execution_dates=None
         )
         
         if df_predictions is not None:
@@ -675,20 +677,20 @@ if __name__ == "__main__":
                 # save risk metrics
                 risk_metrics_file_monthly = os.path.join(monthly_dir, f"risk_metrics.csv")
                 df_monthly_metrics_long.to_csv(risk_metrics_file_monthly, index=False)
-                # save out of sample metrics
-                calculate_and_save_metrics(df_predictions, monthly_dir)
-                # Save residuals
-                residuals_file = os.path.join(monthly_dir, f"residuals.csv")
-                df_insample_residuals.to_csv(residuals_file, index=False)
-
                 # Save in sample metrics
                 insample_metrics_file = os.path.join(monthly_dir, f"insample_metrics.csv")
                 df_insample_metrics.to_csv(insample_metrics_file, index=False)  
                 # save average forecast
                 predictions_annual_file = os.path.join(annual_dir, f"forecasts.csv")
-                df_predictions_annual.to_csv(predictions_annual_file, index=False)
+                df_predictions_annual.to_csv(predictions_annual_file, index=False)  
                 # save risk metrics
                 risk_metrics_file_annual = os.path.join(annual_dir, f"risk_metrics.csv")
                 df_annual_metrics_long.to_csv(risk_metrics_file_annual, index=False)
+                # Save residuals
+                residuals_file = os.path.join(monthly_dir, f"residuals.csv")
+                df_insample_residuals.to_csv(residuals_file, index=False)
+                
+                # save out of sample metrics
+                calculate_and_save_metrics(df_predictions, monthly_dir)
                 # save out of sample metrics
                 calculate_and_save_metrics(df_predictions_annual, annual_dir)
