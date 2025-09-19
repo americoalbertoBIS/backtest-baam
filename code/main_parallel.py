@@ -85,7 +85,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
         df_combined = data_loader.get_data()
 
         # Use only valid dates for bootstrapping (skip initial NaNs)
-        available_dates = df_combined.ffill().dropna().index
+        available_dates = df_combined.ffill().dropna().index[12:] # skip first year
         
         bootstrap_csv_path = os.path.join(factors_base_dir, "bootstrapped_indices.csv")
         
@@ -185,11 +185,11 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
 
 if __name__ == "__main__":
     # Define the countries to process
-    countries = ['UK'] # 'US','EA','UK'
+    countries = ['EA'] # 'US','EA','UK'
     test = False
     if test:
-        model_name_to_test = "AR(1) + Output Gap (Direct) + Inflation (UCSV) - MRM"
-        target_col_to_test = "beta3"
+        model_name_to_test = "AR(1) + Output Gap (Direct) + Inflation (UCSV)"
+        target_col_to_test = "beta1"
     else:
         model_name_to_test = None
         target_col_to_test = None
