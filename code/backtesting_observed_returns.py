@@ -1,5 +1,9 @@
 
 from sklearn.metrics import r2_score
+import warnings
+from sklearn.exceptions import UndefinedMetricWarning
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -605,6 +609,7 @@ if __name__ == "__main__":
     countries = ['US', 'EA', 'UK']
     
     for country in countries:
+        print(country)
         # Configure logging
         logging.basicConfig(
             filename=rf'C:\git\backtest-baam\logs\{country}_observed_returns_AR_1.log',
@@ -672,20 +677,20 @@ if __name__ == "__main__":
                 # save risk metrics
                 risk_metrics_file_monthly = os.path.join(monthly_dir, f"risk_metrics.csv")
                 df_monthly_metrics_long.to_csv(risk_metrics_file_monthly, index=False)
-                # save out of sample metrics
-                calculate_and_save_metrics(df_predictions, monthly_dir)
-                # Save residuals
-                residuals_file = os.path.join(monthly_dir, f"residuals.csv")
-                df_insample_residuals.to_csv(residuals_file, index=False)
-
                 # Save in sample metrics
                 insample_metrics_file = os.path.join(monthly_dir, f"insample_metrics.csv")
                 df_insample_metrics.to_csv(insample_metrics_file, index=False)  
                 # save average forecast
                 predictions_annual_file = os.path.join(annual_dir, f"forecasts.csv")
-                df_predictions_annual.to_csv(predictions_annual_file, index=False)
+                df_predictions_annual.to_csv(predictions_annual_file, index=False)  
                 # save risk metrics
                 risk_metrics_file_annual = os.path.join(annual_dir, f"risk_metrics.csv")
                 df_annual_metrics_long.to_csv(risk_metrics_file_annual, index=False)
+                # Save residuals
+                residuals_file = os.path.join(monthly_dir, f"residuals.csv")
+                df_insample_residuals.to_csv(residuals_file, index=False)
+                
+                # save out of sample metrics
+                calculate_and_save_metrics(df_predictions, monthly_dir)
                 # save out of sample metrics
                 calculate_and_save_metrics(df_predictions_annual, annual_dir)

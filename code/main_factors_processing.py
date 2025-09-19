@@ -16,11 +16,14 @@ from modeling.evaluation_metrics import calculate_out_of_sample_metrics
 from backtesting.factors_processing import FactorsProcessor
 from backtesting.config_models import models_configurations
 
-CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
-SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+from config_paths import SAVE_DIR
+
+#CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
+BETAS_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+#SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 #LOG_DIR = r"C:\git\backtest-baam\logs"
 LOG_DIR = r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\logs"
-MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
+#MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
 def setup_country_logger(country, log_dir):
     """
@@ -148,22 +151,6 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
         # Save and compute metrics in main_factors_processing.py
         processor.compute_var_cvar_vol()
 
-        #aligned_data = pd.concat(
-        #    [processor.aligned_observed_yields_df.stack(), processor.aligned_predicted_yields_df.stack()],
-        #    axis=1,
-        #    keys=["actual", "prediction"]
-        #).dropna()  # Drop rows where either observed or predicted values are missing
-
-        # Construct the predictions DataFrame
-        #predictions = pd.DataFrame({
-        #   "horizon": (aligned_data.index.get_level_values(0) - execution_date).days // 30,
-        #    "actual": aligned_data["actual"].values,
-        #    "prediction": aligned_data["prediction"].values,
-        #    "execution_date": execution_date,
-        #    "forecast_date": aligned_data.index.get_level_values(0),
-        #    "maturity": aligned_data.index.get_level_values(1)
-        #}).reset_index(drop=True)
-
         return mean_simulated_yields_and_actual_aligned, monthly_returns_df, annual_returns_df
 
     except ValueError as e:
@@ -179,13 +166,17 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['UK']  # Add other countries if needed , 'EA', 'UK' US
+    countries = ['US']  # Add other countries if needed , 'EA', 'UK' US
     
     # Define the subset of models to run
-    run_all_models = True
+    run_all_models = False
     
     if not run_all_models:
-        models_to_run = ["Mixed_Model_MRM"]  # <-- Set your desired subset here
+        models_to_run = ["AR_1",
+                         "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                         "Mixed_Model",
+                         "Mixed_Model_curvMacro",
+                         "Mixed_Model_MRM"]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
     else:
@@ -226,10 +217,15 @@ def main():
             logger.info(f"Processing model: {model_name} for country: {country}")
 
             # Get all execution dates for the current country and model combination
-            execution_dates_file = Path(SAVE_DIR) / country / "factors" / model_config["beta1"] / "beta1" / "forecasts.csv"
+            execution_dates_file = Path(BETAS_DIR) / country / "factors" / model_config["beta1"] / "beta1" / "forecasts.csv"
             execution_dates = pd.read_csv(execution_dates_file)['execution_date'].unique()
             execution_dates = pd.to_datetime(execution_dates)  # Convert execution dates to datetime
             execution_dates = sorted(execution_dates)
+            
+            execution_dates_filter = False
+            custom_dates = pd.date_range(start="2002-01-01", end="2002-05-01", freq="MS")
+            if execution_dates_filter:
+                execution_dates = [d for d in execution_dates if d in custom_dates]
             
             # Preload forecasted and simulated beta data
             preloaded_data = {"forecasted": {}, "simulated": {}}
@@ -237,7 +233,7 @@ def main():
                 beta_model_name = model_config[beta_name]
 
                 # Load forecasted betas
-                forecast_path = Path(SAVE_DIR) / country / "factors" / beta_model_name / beta_name / "forecasts.csv"
+                forecast_path = Path(BETAS_DIR) / country / "factors" / beta_model_name / beta_name / "forecasts.csv"
                 if forecast_path.exists():
                     df_forecast = pd.read_csv(forecast_path)
                     df_forecast['execution_date'] = pd.to_datetime(df_forecast['execution_date'])  # Ensure datetime type
@@ -247,7 +243,7 @@ def main():
                     logger.warning(f"Forecast file not found: {forecast_path}")
 
                 # Load simulated betas
-                simulation_path = Path(SAVE_DIR) / country / "factors" / beta_model_name / beta_name / "simulations.parquet"
+                simulation_path = Path(BETAS_DIR) / country / "factors" / beta_model_name / beta_name / "simulations.parquet"
                 if simulation_path.exists():
                     df_simulation = pd.read_parquet(simulation_path)
                     df_simulation['execution_date'] = pd.to_datetime(df_simulation['execution_date'])  # Ensure datetime type

@@ -4,6 +4,9 @@ os.chdir(r'C:\git\backtest-baam\code')
 import numpy as np
 from scipy.stats import chi2, norm
 from sklearn.metrics import r2_score
+import warnings
+from sklearn.exceptions import UndefinedMetricWarning
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
 import pandas as pd
 

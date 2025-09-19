@@ -14,14 +14,16 @@ from modeling.nelson_siegel import compute_nsr_shadow_ts_noErr
 from data_preparation.data_transformations import calculate_prices_from_yields, calculate_returns_from_prices
 from modeling.evaluation_metrics import calculate_r_squared, calculate_rmse
 from modeling.evaluation_metrics import calculate_out_of_sample_metrics
+from config_paths import SAVE_DIR
 
 from datetime import datetime, timedelta
 
 # Constants
 CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 MONTHS_IN_YEAR = 12      # Number of months in a year
-SAVE_DIR = r"C:\git\backtest-baam\data"
-SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+#SAVE_DIR = r"C:\git\backtest-baam\data"
+#SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+#SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 LOG_DIR = r"C:\git\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
@@ -321,15 +323,16 @@ class FactorsProcessor:
             actual_monthly_returns = observed_prices.pct_change(fill_method=None)
 
             # Annual returns: group by year starting from forecast_date
-            year_index = overlapping_dates.to_series().dt.to_period('A').astype(str)
-            annual_returns = monthly_returns.groupby(year_index).sum()
-            actual_annual_returns = actual_monthly_returns.groupby(year_index).sum()
+            annual_group = np.arange(len(monthly_returns)) // 12
+            annual_returns = monthly_returns.groupby(annual_group).sum()
+            actual_annual_returns = actual_monthly_returns.groupby(annual_group).sum()
 
             # Align annual returns by year index
             overlapping_years = annual_returns.index.intersection(actual_annual_returns.index)
             aligned_annual_returns = annual_returns.loc[overlapping_years]
             aligned_actual_annual_returns = actual_annual_returns.loc[overlapping_years]
 
+            horizon_months = (monthly_returns.index[1:].year - self.execution_date.year) * 12 + (monthly_returns.index[1:].month - self.execution_date.month)
             # Prepare DataFrames
             monthly_df = pd.DataFrame({
                 'forecast_date': monthly_returns.index[1:],  # skip first NaN
@@ -337,10 +340,11 @@ class FactorsProcessor:
                 'maturity': f"{maturity} years",
                 'prediction': monthly_returns.mean(axis=1)[1:].values,
                 'actual': actual_monthly_returns[1:].values,
-                'horizon': ((monthly_returns.index[1:] - self.execution_date).days // 30)
+                'horizon': horizon_months
             })
+            annual_forecast_dates = [self.execution_date + pd.DateOffset(years=horizon) for horizon in np.arange(1, len(overlapping_years)+1)]
             annual_df = pd.DataFrame({
-                'forecast_date': overlapping_years,
+                'forecast_date': annual_forecast_dates,
                 'execution_date': self.execution_date,
                 'maturity': f"{maturity} years",
                 'prediction': aligned_annual_returns.mean(axis=1).values,
@@ -435,7 +439,7 @@ class FactorsProcessor:
 
                 # VaR and CVaR for each confidence level
                 for cl in confidence_levels:
-                    var = monthly_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(monthly_returns) else None
+                    var = monthly_returns.quantile(1 - cl, axis=1).iloc[horizon - 1] if horizon - 1 < len(monthly_returns) else None
                     cvar = monthly_returns.iloc[horizon - 1][monthly_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
                     monthly_metrics.append({
                         "maturity_years": maturity,
@@ -490,7 +494,7 @@ class FactorsProcessor:
 
                 # VaR and CVaR for each confidence level
                 for cl in confidence_levels:
-                    var = annual_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(annual_returns) else None
+                    var = annual_returns.quantile(1 - cl, axis=1).iloc[horizon - 1] if horizon - 1 < len(annual_returns) else None
                     cvar = annual_returns.iloc[horizon - 1][annual_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
                     annual_metrics.append({
                         "maturity_years": maturity,
