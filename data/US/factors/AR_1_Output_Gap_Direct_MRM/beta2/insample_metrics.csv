@@ -15,6 +15,7 @@ execution_date,indicator,metric,model,target_col,value
 1956-07-01,output_gap,p_value,AR(1) + Output Gap (Direct) - MRM,beta2,6.192473323779013e-06
 1956-07-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct) - MRM,beta2,0.9565323251609432
 1956-07-01,model,n_obs,AR(1) + Output Gap (Direct) - MRM,beta2,35.0
+<<<<<<< HEAD
 1956-08-01,const,coefficient,AR(1) + Output Gap (Direct) - MRM,beta2,0.5312368878292868
 1956-08-01,const,p_value,AR(1) + Output Gap (Direct) - MRM,beta2,0.00014086623773059824
 1956-08-01,beta2,coefficient,AR(1) + Output Gap (Direct) - MRM,beta2,0.6897848455511735
@@ -6647,3 +6648,5 @@ execution_date,indicator,metric,model,target_col,value
 2025-08-01,output_gap,p_value,AR(1) + Output Gap (Direct) - MRM,beta2,1.368208093153574e-05
 2025-08-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct) - MRM,beta2,0.9444528096843778
 2025-08-01,model,n_obs,AR(1) + Output Gap (Direct) - MRM,beta2,864.0
+=======
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9

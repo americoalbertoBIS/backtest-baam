@@ -2807,14 +2807,21 @@ execution_date,indicator,metric,model,target_col,value
 2018-12-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta3,0.01233903764186066
 2018-12-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta3,0.8537561308671394
 2018-12-01,model,n_obs,AR(1) + Output Gap (Direct),beta3,784.0
+<<<<<<< HEAD
 2019-01-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.0056161352818959315
 2019-01-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8763483458670083
 2019-01-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.90945317595225
+=======
+2019-01-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.005616135281896193
+2019-01-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8763483458670026
+2019-01-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.9094531759522497
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9
 2019-01-01,beta3,p_value,AR(1) + Output Gap (Direct),beta3,3.805127082609202e-302
 2019-01-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta3,0.028695287624840828
 2019-01-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta3,0.012321621869743216
 2019-01-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta3,0.8537547649994042
 2019-01-01,model,n_obs,AR(1) + Output Gap (Direct),beta3,785.0
+<<<<<<< HEAD
 2019-02-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.005777203974626109
 2019-02-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8726504398005182
 2019-02-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.9094450406472419
@@ -2826,6 +2833,19 @@ execution_date,indicator,metric,model,target_col,value
 2019-03-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.006338088400526213
 2019-03-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8602338290203795
 2019-03-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.9094437670382289
+=======
+2019-02-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.005777203974626266
+2019-02-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8726504398005147
+2019-02-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.9094450406472413
+2019-02-01,beta3,p_value,AR(1) + Output Gap (Direct),beta3,1.6268960396141375e-302
+2019-02-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta3,0.028682926967544455
+2019-02-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta3,0.012240370095833402
+2019-02-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta3,0.8537565456858093
+2019-02-01,model,n_obs,AR(1) + Output Gap (Direct),beta3,786.0
+2019-03-01,const,coefficient,AR(1) + Output Gap (Direct),beta3,-0.006338088400526239
+2019-03-01,const,p_value,AR(1) + Output Gap (Direct),beta3,0.8602338290203789
+2019-03-01,beta3,coefficient,AR(1) + Output Gap (Direct),beta3,0.9094437670382287
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9
 2019-03-01,beta3,p_value,AR(1) + Output Gap (Direct),beta3,7.381384918273278e-303
 2019-03-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta3,0.02867164926158372
 2019-03-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta3,0.012145237517860567

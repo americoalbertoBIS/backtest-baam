@@ -14,14 +14,16 @@ from modeling.nelson_siegel import compute_nsr_shadow_ts_noErr
 from data_preparation.data_transformations import calculate_prices_from_yields, calculate_returns_from_prices
 from modeling.evaluation_metrics import calculate_r_squared, calculate_rmse
 from modeling.evaluation_metrics import calculate_out_of_sample_metrics
+from config_paths import SAVE_DIR
 
 from datetime import datetime, timedelta
 
 # Constants
 CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 MONTHS_IN_YEAR = 12      # Number of months in a year
-SAVE_DIR = r"C:\git\backtest-baam\data"
-SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+#SAVE_DIR = r"C:\git\backtest-baam\data"
+#SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+#SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 LOG_DIR = r"C:\git\backtest-baam\logs"
 MLFLOW_TRACKING_URI = r"sqlite:///C:/git/backtest-baam/mlflow/mlflow.db"
 
@@ -243,7 +245,7 @@ class FactorsProcessor:
         self.aligned_observed_yields_df = self.observed_yields_df_resampled.loc[overlapping_dates]
         self.aligned_predicted_yields_df = self.mean_simulated_yields_df.loc[overlapping_dates]
 
-    def calculate_and_save_returns(self):
+    def calculate_and_save_returns_simulations(self):
         """
         Calculate and save monthly and annual returns for a given maturity.
 
@@ -273,7 +275,7 @@ class FactorsProcessor:
             monthly_returns_long_format["execution_date"] = self.execution_date
 
             # Save to a Parquet file
-            monthly_dir = returns_dir / "monthly" / f"{maturity}_years"
+            monthly_dir = returns_dir / "monthly" / "simulations" / f"{maturity}_years"
             monthly_dir.mkdir(parents=True, exist_ok=True)
             monthly_file_path = monthly_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
             monthly_returns_long_format.to_parquet(monthly_file_path, index=False)
@@ -284,17 +286,77 @@ class FactorsProcessor:
                 var_name="simulation_id",  # Simulation IDs as variable names
                 value_name="annual_returns"  # Annual returns as values
             )
-            annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "horizon_years"})
-            annual_returns_long_format["horizon_years"] = annual_returns_long_format["horizon_years"]+1
+            annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "horizon"})
+            annual_returns_long_format["horizon"] = annual_returns_long_format["horizon"]+1
             annual_returns_long_format["maturity"] = f"{maturity} years"
             annual_returns_long_format["execution_date"] = self.execution_date
 
             # Save to a Parquet file
-            annual_dir = returns_dir / "annual" / f"{maturity}_years"
+            annual_dir = returns_dir / "annual" / "simulations" / f"{maturity}_years"
             annual_dir.mkdir(parents=True, exist_ok=True)
             annual_file_path = annual_dir / f"simulations_{self.execution_date.strftime('%d%m%Y')}.parquet"
             annual_returns_long_format.to_parquet(annual_file_path, index=False)
 
+    def get_mean_simulated_returns(self):
+        """
+        Calculate mean simulated and actual monthly and annual returns for each maturity,
+        aligning indices between simulated and observed yields.
+        Returns two DataFrames: monthly_all, annual_all.
+        """
+        results = []
+        for maturity in self.yield_curve_model.uniqueTaus:
+            # Get simulated and observed yields for this maturity
+            simulated_yields = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)
+            observed_yields = self.observed_yields_df_resampled[f"{maturity} years"]
+
+            # Align indices
+            overlapping_dates = simulated_yields.index.intersection(observed_yields.index)
+            aligned_simulated_yields = simulated_yields.loc[overlapping_dates]
+            aligned_observed_yields = observed_yields.loc[overlapping_dates]
+
+            # Calculate prices from yields
+            simulated_prices = calculate_prices_from_yields(aligned_simulated_yields, maturity)
+            observed_prices = calculate_prices_from_yields(aligned_observed_yields, maturity)
+
+            # Monthly returns
+            monthly_returns = simulated_prices.pct_change(fill_method=None)
+            actual_monthly_returns = observed_prices.pct_change(fill_method=None)
+
+            # Annual returns: group by year starting from forecast_date
+            annual_group = np.arange(len(monthly_returns)) // 12
+            annual_returns = monthly_returns.groupby(annual_group).sum()
+            actual_annual_returns = actual_monthly_returns.groupby(annual_group).sum()
+
+            # Align annual returns by year index
+            overlapping_years = annual_returns.index.intersection(actual_annual_returns.index)
+            aligned_annual_returns = annual_returns.loc[overlapping_years]
+            aligned_actual_annual_returns = actual_annual_returns.loc[overlapping_years]
+
+            horizon_months = (monthly_returns.index[1:].year - self.execution_date.year) * 12 + (monthly_returns.index[1:].month - self.execution_date.month)
+            # Prepare DataFrames
+            monthly_df = pd.DataFrame({
+                'forecast_date': monthly_returns.index[1:],  # skip first NaN
+                'execution_date': self.execution_date,
+                'maturity': f"{maturity} years",
+                'prediction': monthly_returns.mean(axis=1)[1:].values,
+                'actual': actual_monthly_returns[1:].values,
+                'horizon': horizon_months
+            })
+            annual_forecast_dates = [self.execution_date + pd.DateOffset(years=horizon) for horizon in np.arange(1, len(overlapping_years)+1)]
+            annual_df = pd.DataFrame({
+                'forecast_date': annual_forecast_dates,
+                'execution_date': self.execution_date,
+                'maturity': f"{maturity} years",
+                'prediction': aligned_annual_returns.mean(axis=1).values,
+                'actual': aligned_actual_annual_returns.values,
+                'horizon': np.arange(1, len(overlapping_years)+1)
+            })
+            results.append((monthly_df, annual_df))
+
+        monthly_all = pd.concat([r[0] for r in results], ignore_index=True)
+        annual_all = pd.concat([r[1] for r in results], ignore_index=True)
+        return monthly_all, annual_all
+    
     def compute_var_cvar_vol(self):
         """
         Compute VaR, CVaR, Expected Returns, and Observed Monthly and Annual Returns for each year of the horizon and maturity,
@@ -341,38 +403,58 @@ class FactorsProcessor:
             ):
                 if horizon > 60:
                     break
+                
+                forecast_date = self.execution_date + pd.DateOffset(months=horizon)
 
                 monthly_metrics.append({
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
-                    "horizon_months": horizon,
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
                     "metric": "Monthly Expected Return",
                     "value": monthly_return
                 })
                 monthly_metrics.append({
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
-                    "horizon_months": horizon,
-                    "metric": "Monthly Volatility",
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
+                    "metric": "volatility",
                     "value": monthly_vol
+                })
+                # Add Observed Monthly Return
+                observed_monthly_return = (
+                    observed_returns.iloc[horizon - 1]
+                    if (horizon - 1) < len(observed_returns)
+                    else None
+                )
+                monthly_metrics.append({
+                    "maturity_years": maturity,
+                    "execution_date": self.execution_date,
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
+                    "metric": "Observed Monthly Return",
+                    "value": observed_monthly_return
                 })
 
                 # VaR and CVaR for each confidence level
                 for cl in confidence_levels:
-                    var = monthly_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(monthly_returns) else None
+                    var = monthly_returns.quantile(1 - cl, axis=1).iloc[horizon - 1] if horizon - 1 < len(monthly_returns) else None
                     cvar = monthly_returns.iloc[horizon - 1][monthly_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
                     monthly_metrics.append({
                         "maturity_years": maturity,
                         "execution_date": self.execution_date,
-                        "horizon_months": horizon,
-                        "metric": f"Monthly VaR {int(cl*100)}",
+                        "horizon": horizon,
+                        "forecast_date": forecast_date,
+                        "metric": f"VaR {int(cl*100)}",
                         "value": var
                     })
                     monthly_metrics.append({
                         "maturity_years": maturity,
                         "execution_date": self.execution_date,
-                        "horizon_months": horizon,
-                        "metric": f"Monthly CVaR {int(cl*100)}",
+                        "horizon": horizon,
+                        "forecast_date": forecast_date,
+                        "metric": f"CVaR {int(cl*100)}",
                         "value": cvar
                     })
 
@@ -383,50 +465,57 @@ class FactorsProcessor:
                 if horizon > 5:
                     break
 
+                forecast_date = self.execution_date + pd.DateOffset(years=horizon)
+
                 annual_metrics.append({
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
-                    "horizon_years": horizon,
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
                     "metric": "Expected Annual Returns",
                     "value": expected_return
                 })
                 annual_metrics.append({
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
-                    "horizon_years": horizon,
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
                     "metric": "Volatility",
                     "value": vol
                 })
                 annual_metrics.append({
                     "maturity_years": maturity,
                     "execution_date": self.execution_date,
-                    "horizon_years": horizon,
+                    "horizon": horizon,
+                    "forecast_date": forecast_date,
                     "metric": "Observed Annual Return",
                     "value": observed_return
                 })
 
                 # VaR and CVaR for each confidence level
                 for cl in confidence_levels:
-                    var = annual_returns.quantile(1 - cl, axis=1)[horizon - 1] if horizon - 1 < len(annual_returns) else None
+                    var = annual_returns.quantile(1 - cl, axis=1).iloc[horizon - 1] if horizon - 1 < len(annual_returns) else None
                     cvar = annual_returns.iloc[horizon - 1][annual_returns.iloc[horizon - 1] <= var].mean() if var is not None else None
                     annual_metrics.append({
                         "maturity_years": maturity,
                         "execution_date": self.execution_date,
-                        "horizon_years": horizon,
+                        "horizon": horizon,
+                        "forecast_date": forecast_date,
                         "metric": f"VaR {int(cl*100)}",
                         "value": var
                     })
                     annual_metrics.append({
                         "maturity_years": maturity,
                         "execution_date": self.execution_date,
-                        "horizon_years": horizon,
+                        "horizon": horizon,
+                        "forecast_date": forecast_date,
                         "metric": f"CVaR {int(cl*100)}",
                         "value": cvar
                     })
 
         # Save monthly metrics to a separate file
         monthly_metrics_df = pd.DataFrame(monthly_metrics)
-        monthly_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / f"monthly_metrics.csv"
+        monthly_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / "monthly" / "risk_metrics.csv"
         lock_file_path = f"{monthly_file_path}.lock"
         lock = FileLock(lock_file_path)
         with lock:
@@ -439,7 +528,7 @@ class FactorsProcessor:
 
         # Save annual metrics to a separate file
         annual_metrics_df = pd.DataFrame(annual_metrics)
-        annual_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / f"annual_metrics.csv"
+        annual_file_path = self.returns_dir / "estimated_returns" / f"{self.model_name}" / "annual" / "risk_metrics.csv"
         lock_file_path = f"{annual_file_path}.lock"
         lock = FileLock(lock_file_path)
         with lock:

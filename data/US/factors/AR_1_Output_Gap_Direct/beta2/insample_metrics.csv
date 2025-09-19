@@ -2167,14 +2167,29 @@ execution_date,indicator,metric,model,target_col,value
 2012-03-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta2,0.00011338187918814064
 2012-03-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta2,0.9331705303010296
 2012-03-01,model,n_obs,AR(1) + Output Gap (Direct),beta2,703.0
+<<<<<<< HEAD
 2012-05-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09035342211467548
 2012-05-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0006210789838500527
 2012-05-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9453806721630932
+=======
+2012-04-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.08950713210723124
+2012-04-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0006919355025567782
+2012-04-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9466852030208672
+2012-04-01,beta2,p_value,AR(1) + Output Gap (Direct),beta2,0.0
+2012-04-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta2,-0.024775337366103704
+2012-04-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta2,0.00011031459208434062
+2012-04-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta2,0.9335444580643395
+2012-04-01,model,n_obs,AR(1) + Output Gap (Direct),beta2,704.0
+2012-05-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09035342211467544
+2012-05-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0006210789838500581
+2012-05-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9453806721630929
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9
 2012-05-01,beta2,p_value,AR(1) + Output Gap (Direct),beta2,0.0
 2012-05-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta2,-0.02477882804458757
 2012-05-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta2,0.00011459928431687861
 2012-05-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta2,0.933482101408414
 2012-05-01,model,n_obs,AR(1) + Output Gap (Direct),beta2,705.0
+<<<<<<< HEAD
 2012-06-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09092686192963385
 2012-06-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0005812881287929703
 2012-06-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9449652759446144
@@ -2186,6 +2201,19 @@ execution_date,indicator,metric,model,target_col,value
 2012-07-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09090478442671922
 2012-07-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0005970581975026924
 2012-07-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9457060296378879
+=======
+2012-06-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09092686192963502
+2012-06-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0005812881287928787
+2012-06-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.944965275944615
+2012-06-01,beta2,p_value,AR(1) + Output Gap (Direct),beta2,0.0
+2012-06-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta2,-0.02460323941798022
+2012-06-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta2,0.00012004998524802577
+2012-06-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct),beta2,0.9336669379748477
+2012-06-01,model,n_obs,AR(1) + Output Gap (Direct),beta2,706.0
+2012-07-01,const,coefficient,AR(1) + Output Gap (Direct),beta2,0.09090478442671918
+2012-07-01,const,p_value,AR(1) + Output Gap (Direct),beta2,0.0005970581975026963
+2012-07-01,beta2,coefficient,AR(1) + Output Gap (Direct),beta2,0.9457060296378881
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9
 2012-07-01,beta2,p_value,AR(1) + Output Gap (Direct),beta2,0.0
 2012-07-01,output_gap,coefficient,AR(1) + Output Gap (Direct),beta2,-0.02486281087681531
 2012-07-01,output_gap,p_value,AR(1) + Output Gap (Direct),beta2,0.00010368032902332146

@@ -31,6 +31,7 @@ execution_date,indicator,metric,model,target_col,value
 1990-01-01,inflation,p_value,AR(1) + Inflation (UCSV),beta3,0.003403480834819652
 1990-01-01,model,adjusted_r_squared,AR(1) + Inflation (UCSV),beta3,0.6054597017767284
 1990-01-01,model,n_obs,AR(1) + Inflation (UCSV),beta3,428.0
+<<<<<<< HEAD
 1990-02-01,const,coefficient,AR(1) + Inflation (UCSV),beta3,0.08221643509255236
 1990-02-01,const,p_value,AR(1) + Inflation (UCSV),beta3,0.3774766103930409
 1990-02-01,beta3,coefficient,AR(1) + Inflation (UCSV),beta3,0.7341511414112893
@@ -3383,3 +3384,5 @@ execution_date,indicator,metric,model,target_col,value
 2025-01-01,inflation,p_value,AR(1) + Inflation (UCSV),beta3,0.005609914852763395
 2025-01-01,model,adjusted_r_squared,AR(1) + Inflation (UCSV),beta3,0.8535014972023377
 2025-01-01,model,n_obs,AR(1) + Inflation (UCSV),beta3,848.0
+=======
+>>>>>>> bf3160b72ed1c2e8f42f9e471472ec2fcd861fd9
