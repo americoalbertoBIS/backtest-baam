@@ -36,10 +36,7 @@ def process_file(maturity_folder, maturity_path, file, data_obs):
             lambda row: row["execution_date"] + pd.DateOffset(years=row["horizon"]), axis=1
         )
     
-    if freq == 'annual':
-        returns_col = 'annual_returns'
-    else:
-        returns_col = 'monthly_returns'
+    returns_col = 'simulated_value'
     # Check for required columns
     required_cols = {"forecast_date", "simulation_id", returns_col}
     missing_cols = required_cols - set(data_sim.columns)
