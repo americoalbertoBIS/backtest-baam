@@ -173,7 +173,7 @@ def main():
     
     if not run_all_models:
         models_to_run = ["AR_1",
-                         "AR_1_Output_Gap_Direct_Inflation_UCSV",
+                         #"AR_1_Output_Gap_Direct_Inflation_UCSV",
                          "Mixed_Model",
                          "Mixed_Model_curvMacro",
                          "Mixed_Model_MRM"]  # <-- Set your desired subset here
@@ -183,7 +183,7 @@ def main():
         selected_models_configurations = models_configurations
     
     # Determine the number of workers for parallel processing
-    max_workers = max(1, multiprocessing.cpu_count() // 3)
+    max_workers = max(1, multiprocessing.cpu_count() // 2)
     
     for country in countries:
         
