@@ -126,37 +126,100 @@ def convert_mom_to_yoy(mom_series, col_name='YoY_inflation'):
     df_series[col_name] = mom2yoy_logarithmic(df_series)
     return df_series[col_name]
 
-def calculate_prices_from_yields(yields, maturity):
+def zcb_components(yields,
+                   maturity,
+                   freq=12,
+                   carry_method='approx'):
     """
-    Convert yields to zero-coupon bond prices for a given maturity.
+    Compute ZCB price, price-return and carry from a yield series in decimal form.
 
     Args:
-        yields (pd.DataFrame): DataFrame of yields (rows: dates, columns: simulations).
-        maturity (float): Maturity of the bond.
+      yield_ser : pd.Series
+        Yields as decimals (e.g. 0.0427 for 4.27%), indexed by date.
+      maturity  : float
+        Time-to-maturity in years (e.g. 0.25).
+      freq      : int, default=12
+        Number of observations per year (e.g. 12 for monthly).
+      carry_method : {'approx','exact'}, default='exact'
+        ‘approx’: carryₜ = yₜ₋₁ / freq  
+        ‘exact’ : carryₜ = ((1+yₜ)^(–(T–1/freq)) – (1+yₜ)^(–T)) / (1+yₜ)^(–T) * freq
 
     Returns:
-        pd.DataFrame: DataFrame of bond prices.
+      DataFrame with columns:
+        Price     : Pₜ = (1 + yₜ)^(−T)
+        PriceRet  : Rₜ = Pₜ / Pₜ₋₁ − 1
+        Carry     : annualized carry component
+        TotalRet  : PriceRet + Carry
     """
-    return 1 / (1 + yields) ** maturity  # Price = 1 / (1 + Y)^T
+    # input checks
+    if not isinstance(yields, pd.Series):
+        raise TypeError("yield_ser must be a pandas Series")
+    if yields.empty:
+        raise ValueError("yield_ser is empty")
+    try:
+        T0 = float(maturity)
+    except:
+        raise ValueError("maturity must be convertible to float")
+    if T0 < 0:
+        raise ValueError("maturity must be non-negative")
+    if freq <= 0 or not float(freq).is_integer():
+        raise ValueError("freq must be a positive integer")
+    if carry_method not in ('approx', 'exact'):
+        raise ValueError("carry_method must be 'approx' or 'exact'")
 
+    # 1) price at fixed maturity T0
+    y = yields.astype(float)
+    price = (1 + y) ** (-T0)
 
-def calculate_returns_from_prices(prices, months_in_year=12):
+    # 2) price-only return
+    price_ret = price / price.shift(1) - 1
+
+    # 3) carry
+    if carry_method == 'approx':
+        carry = y.shift(1) / freq
+    else:
+        Tm1 = max(T0 - 1/freq, 0.0)
+        P_roll = (1 + y) ** (-Tm1)
+        carry = (P_roll - price) / price * freq
+
+    total_ret = price_ret + carry
+
+    return total_ret
+    #return pd.DataFrame({
+    #    'price':     price,
+    #    'price_return':  price_ret,
+    #    'carry':     carry,
+    #    'total_return':  total_ret
+    #}, index=yields.index)
+
+def seq_annual_arith_return(df, freq=12):
     """
-    Calculate monthly and annual returns from bond prices.
+    Given a DataFrame or Series of periodic returns, compute the sequential
+    arithmetic‐annual returns by summing each block of 'freq' observations.
 
     Args:
-        prices (pd.DataFrame): DataFrame of bond prices (rows: dates, columns: simulations).
-        months_in_year (int): Number of months in a year (default: 12).
+      df   : pd.DataFrame or pd.Series containing a column 'TotalRet' (or is the Series itself)
+      freq : int, number of periods per year (e.g. 12 for monthly)
 
     Returns:
-        tuple: (monthly_returns, annual_returns)
-            - monthly_returns: DataFrame of monthly returns.
-            - annual_returns: DataFrame of annual returns (aggregated from monthly returns).
+      pd.Series of length floor(len(df)/freq), indexed by the last date in each block,
+      containing the block‐sum of returns.
     """
-    # Calculate monthly returns
-    monthly_returns = prices.pct_change(fill_method = None)  # Drop NaN values after percentage change
+    # if they passed the whole DataFrame, pull out the TotalRet column
+    ret = df.values
+    idx = df.index
 
-    # Aggregate monthly returns into annual returns (arithmetic sum)
-    annual_returns = monthly_returns.groupby(np.arange(len(monthly_returns)) // months_in_year).sum()
+    # only keep full years
+    n = len(ret)
+    years = n // freq
+    if years == 0:
+        return pd.Series([], dtype=float)
 
-    return monthly_returns, annual_returns
+    # reshape and sum
+    ret_matrix = ret[:years*freq].reshape(years, freq)
+    annual_ret = ret_matrix.sum(axis=1)
+
+    # pick the date at the end of each block
+    block_dates = [ idx[(i+1)*freq - 1] for i in range(years) ]
+    
+    return pd.Series(annual_ret, index=block_dates)

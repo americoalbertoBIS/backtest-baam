@@ -173,18 +173,18 @@ def main():
     
     if not run_all_models:
         models_to_run = ["AR_1",
-                         #"AR_1_Output_Gap_Direct_Inflation_UCSV",
                          "Mixed_Model",
                          "Mixed_Model_curvMacro",
-                         "Mixed_Model_MRM"]  # <-- Set your desired subset here
+                         "Mixed_Model_MRM",
+                         "AR_1_Output_Gap_Direct_Inflation_UCSV"]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
     else:
         selected_models_configurations = models_configurations
     
     # Determine the number of workers for parallel processing
-    max_workers = max(1, multiprocessing.cpu_count() // 2)
-    
+    max_workers = max(1, multiprocessing.cpu_count()//3)  # 
+    print(str(max_workers) + " workers will be used for parallel processing.")
     for country in countries:
         
         # Configure logging
@@ -223,7 +223,7 @@ def main():
             execution_dates = sorted(execution_dates)
             
             execution_dates_filter = False
-            custom_dates = pd.date_range(start="2002-01-01", end="2002-05-01", freq="MS")
+            custom_dates = pd.date_range(start="1995-01-01", end="2000-01-01", freq="MS")
             if execution_dates_filter:
                 execution_dates = [d for d in execution_dates if d in custom_dates]
             
