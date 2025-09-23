@@ -10,6 +10,28 @@ from scipy.stats import gaussian_kde
 import numpy as np
 import plotly.graph_objects as go
 
+benchmark_model = "AR_1"
+
+@st.cache_data
+def load_model_simulations(model, maturity_folder_path):
+    """
+    Load all simulation parquet files for a specific model and maturity.
+    
+    Args:
+        model (str): The name of the model.
+        maturity_folder_path (str): The folder path for the maturity.
+
+    Returns:
+        pd.DataFrame: Combined DataFrame of all simulations for the model.
+    """
+    all_parquet_files = [os.path.join(maturity_folder_path, f) for f in os.listdir(maturity_folder_path) if f.endswith(".parquet")]
+    if all_parquet_files:
+        # Concatenate all parquet files for the current model
+        model_simulations = pd.concat([pd.read_parquet(file) for file in all_parquet_files], ignore_index=True)
+        model_simulations["model"] = model  # Add a column to identify the model
+        return model_simulations
+    else:
+        return pd.DataFrame()  # Return an empty DataFrame if no files are found
 # Helper Functions
 def load_data(folder_path, subfolder, model, file_name):
     """Load data from the specified folder path and rename inconsistent columns."""
@@ -147,13 +169,52 @@ models = [f.name for f in os.scandir(folder_path) if f.is_dir() and f.name != "a
 target_variables = ["beta1", "beta2", "beta3"]
 
 # Tabs for Out-of-Sample and In-Sample Metrics
-tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_simulation_comparison = st.tabs(
-    ["Factors backtesting overview","Factors out-of-sample metrics", "Factors in-sample metrics", "Factors simulations analysis", 
-     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", 
-     "Returns backtesting overview", "Returns forward looking distributions"]
-)
+#tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_returns_out_of_sample, tab_simulation_comparison = st.tabs(
+#    ["Factors backtesting overview","Factors out-of-sample metrics", "Factors in-sample metrics", "Factors simulations analysis", 
+#     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", 
+#     "Returns backtesting overview", "Returns out-of-sample metrics", "Returns forward looking distributions"]
+#)
 
-with tab_factors:
+from streamlit_option_menu import option_menu
+
+tab_names = [
+    "Factors backtesting overview",
+    "Factors out-of-sample metrics",
+    "Factors in-sample metrics",
+    "Factors simulations analysis",
+    "Yields backtesting overview",
+    "Yields out-of-sample metrics",
+    "Yields simulations analysis",
+    "Returns backtesting overview",
+    "Returns out-of-sample metrics",
+    "Returns forward looking distributions",
+    "Returns CRPS analysis"
+]
+
+tab_icons = [
+    "bar-chart", "graph-up", "clipboard-data", "activity",
+    "bar-chart", "graph-up", "activity",
+    "bar-chart", "graph-up", "activity"
+]
+
+with st.sidebar:
+    selected_tab = option_menu(
+        "Backtesting Dashboard",
+        tab_names,
+        icons=tab_icons,
+        menu_icon="cast",
+        default_index=0,
+        orientation="vertical",
+        styles={
+            "container": {"padding": "0!important", "background-color": "#fafafa"},
+            "icon": {"color": "#3a6bac", "font-size": "18px"},
+            "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#3a6bac", "color": "white"},
+        }
+    )
+
+if selected_tab == "Factors backtesting overview":
+#with tab_factors:
     st.title("Actuals vs predictions for factors")
 
     # Create a 3-column layout for the plots
@@ -307,8 +368,9 @@ with tab_factors:
                 else:
                     st.warning(f"No data available for {target_variable}.")
 
+elif selected_tab == "Factors out-of-sample metrics":
 # Out-of-Sample Model Comparison Tab
-with tab_out_of_sample:
+#with tab_out_of_sample:
     st.title("Out-of-sample model comparison")
 
     # Determine the date range for the data
@@ -497,9 +559,10 @@ with tab_out_of_sample:
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"No data available for RMSE by Execution Date ({target_variable})")
-                
+
+elif selected_tab == "Factors in-sample metrics":               
 # In-Sample Model Specifics Tab
-with tab_in_sample:
+#with tab_in_sample:
     st.title("Factors in-sample model metrics")
 
     # Load all in-sample metrics data to determine the date range
@@ -608,7 +671,8 @@ with tab_in_sample:
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
 
-with tab_simulations:
+elif selected_tab == "Factors simulations analysis":
+#with tab_simulations:
     st.title("Factors simulations analysis: heatmaps, fan chart, and distributions")
 
     # Dropdown to select a specific model and beta
@@ -997,7 +1061,8 @@ with tab_simulations:
     else:
         st.warning("No data available for the selected model and beta.")
 
-with tab_yields_1:
+elif selected_tab == "Yields backtesting overview":
+#with tab_yields_1:
     st.title("Actuals vs predictions for yields")
 
     # Dynamically update the folder path for yields based on the selected country
@@ -1201,7 +1266,8 @@ with tab_yields_1:
         else:
             st.warning(f"No data available for Yields (Maturity: {selected_maturity}).")
 
-with tab_yields:
+elif selected_tab == "Yields out-of-sample metrics":
+#with tab_yields:
     st.title("Out-of-sample model comparison")
 
     # Dynamically update the folder path for yields based on the selected country
@@ -1262,6 +1328,12 @@ with tab_yields:
     #for model, data in rmse_horizon_data.items():
     #    if "ExecutionDate" in data.columns:
     #        all_dates.extend(pd.to_datetime(data["ExecutionDate"]).tolist())
+    if os.path.exists(sample_file_path):
+        sample_data = pd.read_csv(sample_file_path)
+        all_dates = pd.to_datetime(sample_data["execution_date"]).tolist()
+    else:
+        all_dates = []
+
     min_date = min(all_dates) if all_dates else pd.to_datetime("1950-01-01")
     max_date = max(all_dates) if all_dates else pd.to_datetime("2025-12-31")
 
@@ -1454,13 +1526,32 @@ with tab_yields:
             else:
                 st.warning(f"No data available for Dynamic RMSE by Horizon for {maturity}.")
 
-with tab_sim_yields:
+elif selected_tab == "Yields simulations analysis":
+#with tab_sim_yields:
     st.title("Yields simulations analysis: heatmaps and fan chart")
+    # Dynamically update the folder path for yields based on the selected country
+    yields_folder_path = os.path.join(base_folder, selected_country, "yields")
+
+    # Define paths for estimated and observed yields
+    estimated_yields_folder = os.path.join(yields_folder_path, "estimated_yields")
+    observed_yields_folder = os.path.join(yields_folder_path, "observed_yields")
+
+    # Get available models for estimated yields
+    estimated_models = [f.name for f in os.scandir(estimated_yields_folder) if f.is_dir()]
+    benchmark_model = "AR_1"  # Observed yields benchmark model
+
+    sample_file_path_yields = os.path.join(observed_yields_folder, benchmark_model, "forecasts.csv")
+    if os.path.exists(sample_file_path_yields):
+        sample_data_yields = pd.read_csv(sample_file_path_yields)
+        available_maturities = sample_data_yields["maturity"].str.split(' ', expand=True)[0].unique()
+    else:
+        available_maturities = np.array([])
 
     filter_cols1, filter_cols2 = st.columns(2)
     with filter_cols1:
         # Dropdown for selecting model
         #st.subheader("Model Selection")
+        estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
         selected_model = st.selectbox(
             "Select model",
             estimated_models_with_labels,
@@ -1481,6 +1572,9 @@ with tab_sim_yields:
 
     # Load and concatenate all parquet files for the selected maturity
     if selected_model and selected_maturity:
+
+        yields_folder_path = os.path.join(base_folder, selected_country, "yields")
+
         # Adjust folder for benchmark model
         model_folder = benchmark_model if selected_model == f"{benchmark_model} (Benchmark)" else selected_model
         maturity_folder = selected_maturity + "_years"  # Convert maturity to folder name format
@@ -1610,154 +1704,330 @@ with tab_sim_yields:
         st.warning("Please select a model and maturity to proceed.")
 
 
-with tab_returns:
-    st.title("Returns analysis: VaR, CVaR, observed and expected returns")
+# ...existing code...
 
-    returns_filters = st.columns(3)
-    # Dropdown for selecting model
-    #st.subheader("Model Selection")
+
+
+elif selected_tab == "Returns backtesting overview":
+#with tab_returns:
+    st.title("Returns analysis: VaR, CVaR, observed and expected returns")
+    
+    # Get available models for estimated returns
+    estimated_returns_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns")
+    estimated_models = [f.name for f in os.scandir(estimated_returns_folder) if f.is_dir()]
+    benchmark_model = "AR_1"
+    estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
+
+    # For returns tabs
+    returns_observed_folder = os.path.join(base_folder, selected_country, "returns", "observed_returns", benchmark_model, "annual")
+    sample_file_path = os.path.join(returns_observed_folder, "forecasts.csv")
+    if os.path.exists(sample_file_path):
+        sample_data = pd.read_csv(sample_file_path)
+        available_maturities = sample_data["maturity"].unique()
+    else:
+        available_maturities = np.array([])  # or []
+
+    returns_filters = st.columns(4)
     with returns_filters[0]:
         selected_model = st.selectbox(
-            "Select Model for Returns Analysis",
-            estimated_models,  # Use the list of available models
-            key="returns_model_selector"  # Unique key for this dropdown
+            "Select Model",
+            estimated_models_with_labels,
+            key="returns_model_selector"
+        )
+    with returns_filters[1]:
+        selected_frequency = st.selectbox(
+            "Select Frequency",
+            ["monthly", "annual"],
+            key="returns_frequency_selector"
         )
 
-    # Load the annual metrics CSV for the selected model
-    returns_folder_path = os.path.join(base_folder, selected_country, "returns", "estimated_returns", selected_model)
-    annual_metrics_file = os.path.join(returns_folder_path, "annual_metrics.csv")
+    # Adjust folder path for benchmark
+    if selected_model == f"{benchmark_model} (Benchmark)":
+        metrics_folder = os.path.join(base_folder, selected_country, "returns", "observed_returns", benchmark_model, selected_frequency)
+        is_benchmark = True
+    else:
+        metrics_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns", selected_model, selected_frequency)
+        is_benchmark = False
 
-    if os.path.exists(annual_metrics_file):
-        metrics_df = pd.read_csv(annual_metrics_file)
-        with returns_filters[1]:
-            # Dropdown for selecting maturity
-            #st.subheader("Maturity Selection")
-            available_maturities = metrics_df["maturity_years"].unique()
+    metrics_file = os.path.join(metrics_folder, "risk_metrics.csv")
+    if os.path.exists(metrics_file):
+        metrics_df = pd.read_csv(metrics_file)
+        if 'maturity_years' in metrics_df.columns:
+            metrics_df = metrics_df.rename(columns={'maturity_years':'maturity'})
+        with returns_filters[2]:
+            available_maturities = metrics_df["maturity"].unique()
             selected_maturity = st.selectbox(
                 "Select maturity (years)",
                 sorted(available_maturities),
-                key="returns_maturity_selector"  # Unique key for this dropdown
+                key="returns_maturity_selector"
             )
-        with returns_filters[2]:
-            # Dropdown for selecting horizon
-            #st.subheader("Horizon Selection")
-            available_horizons = metrics_df["horizon_years"].unique()
+        with returns_filters[3]:
+            available_horizons = metrics_df["horizon"].unique()
             selected_horizon = st.selectbox(
-                "Select horizon (years)",
+                "Select horizon",
                 sorted(available_horizons),
-                key="returns_horizon_selector"  # Unique key for this dropdown
+                key="returns_horizon_selector"
+            )
+            var_options = ["VaR 95", "VaR 97", "VaR 99"]
+            selected_var = st.selectbox(
+                "Select VaR metric",
+                var_options,
+                index=1,
+                key="returns_var_selector"
             )
 
-        # Filter the DataFrame for the selected maturity and horizon
+        # Harmonize metric names based on frequency
+        if selected_frequency == "monthly":
+            observed_metric = "Observed Monthly Return"
+            expected_metric = "Expected Monthly Returns"
+        else:
+            observed_metric = "Observed Annual Return"
+            expected_metric = "Expected Annual Returns"
+
         filtered_df = metrics_df[
-            (metrics_df["maturity_years"] == selected_maturity) &
-            (metrics_df["horizon_years"] == selected_horizon) &
-            (metrics_df["metric"].isin(["VaR 97", "CVaR 97", "Observed Annual Return", "Expected Annual Returns"]))
+            (metrics_df["maturity"] == selected_maturity) &
+            (metrics_df["horizon"] == selected_horizon) &
+            (metrics_df["metric"].isin([
+                selected_var,
+                "CVaR " + selected_var.split(" ")[1],
+                observed_metric, expected_metric, "volatility"
+            ]))
         ]
 
-        # Check for duplicates
-        duplicate_rows = filtered_df[filtered_df.duplicated(subset=["execution_date", "metric"], keep=False)]
-        if not duplicate_rows.empty:
-            #st.warning("Duplicate rows detected. Aggregating duplicates by taking the mean.")
-            filtered_df = filtered_df.groupby(["execution_date", "metric"], as_index=False)["value"].mean()
+        # If benchmark, divide values by 100
+        if is_benchmark and not filtered_df.empty:
+            filtered_df["value"] = filtered_df["value"] / 100
 
-        # Pivot the data to align metrics by execution date
-        pivot_df = filtered_df.pivot(index="execution_date", columns="metric", values="value")
+        # ...existing code...
 
-        # Ensure all required metrics are present
-        required_metrics = ["VaR 97", "CVaR 97", "Observed Annual Return", "Expected Annual Returns"]
-        missing_metrics = [metric for metric in required_metrics if metric not in pivot_df.columns]
-        if missing_metrics:
-            st.warning(f"Missing the following metrics: {', '.join(missing_metrics)}")
-        else:
-            # Plot using Plotly
-            fig = go.Figure()
+        # Pivot the data so each metric is a column
+        pivot_df = filtered_df.pivot(index="execution_date", columns="metric", values="value").sort_index()
 
-            # Add Observed Annual Return
+        # Plot the metrics
+        fig = go.Figure()
+
+        # Observed
+        if observed_metric in pivot_df.columns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["Observed Annual Return"],
+                y=pivot_df[observed_metric],
                 mode="lines",
-                name="Observed Annual Return",
+                name=observed_metric,
                 line=dict(color="#3a6bac"),
                 marker=dict(size=6)
             ))
 
-            # Add Expected Returns
+        # Expected
+        if expected_metric in pivot_df.columns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["Expected Annual Returns"],
+                y=pivot_df[expected_metric],
                 mode="lines",
-                name="Expected Annual Return",
+                name=expected_metric,
                 line=dict(color="#eaa121"),
                 marker=dict(size=6)
             ))
 
-            # Add VaR
+        # VaR
+        if selected_var in pivot_df.columns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["VaR 97"],
+                y=pivot_df[selected_var],
                 mode="lines",
-                name="VaR (97.5)",
-                line=dict(color="#c28191") #, dash="dash"
+                name=selected_var,
+                line=dict(color="#c28191")
             ))
 
-            # Add CVaR
+        # CVaR
+        cvar_metric = "CVaR " + selected_var.split(" ")[1]
+        if cvar_metric in pivot_df.columns:
             fig.add_trace(go.Scatter(
                 x=pivot_df.index,
-                y=pivot_df["CVaR 97"],
+                y=pivot_df[cvar_metric],
                 mode="lines",
-                name="CVaR (97.5)",
-                line=dict(color="#aa322f") # , dash="dot"
+                name=cvar_metric,
+                line=dict(color="#aa322f")
             ))
 
-            # Highlight breaches where Observed Annual Return < VaR
-            breaches = pivot_df["Observed Annual Return"] < pivot_df["VaR 97"]
+        # Volatility
+        if "volatility" in pivot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=pivot_df.index,
+                y=pivot_df["volatility"],
+                mode="lines",
+                name="Volatility",
+                line=dict(color="gray", dash="dot")
+            ))
+
+        # Highlight breaches where Observed < VaR
+        if observed_metric in pivot_df.columns and selected_var in pivot_df.columns:
+            breaches = pivot_df[observed_metric] < pivot_df[selected_var]
             fig.add_trace(go.Scatter(
                 x=pivot_df.index[breaches],
-                y=pivot_df["Observed Annual Return"][breaches],
+                y=pivot_df[observed_metric][breaches],
                 mode="markers",
                 name="VaR Breaches",
                 marker=dict(color="black", size=8, symbol="x")
             ))
 
-            # Update layout
-            fig.update_layout(
-                #title=f"VaR, CVaR, Observed, and Expected Returns Across Execution Dates (Horizon={selected_horizon}y, Maturity={selected_maturity}y)",
-                xaxis_title="Execution Date",
-                yaxis_title="Returns",
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                template="plotly_white"
-            )
+        fig.update_layout(
+            xaxis_title="Execution Date",
+            yaxis_title="Returns",
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+            template="plotly_white"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-            # Display the plot
-            st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning(f"File not found: {annual_metrics_file}")
+        st.warning(f"File not found: {metrics_file}")
 
-@st.cache_data
-def load_model_simulations(model, maturity_folder_path):
-    """
-    Load all simulation parquet files for a specific model and maturity.
-    
-    Args:
-        model (str): The name of the model.
-        maturity_folder_path (str): The folder path for the maturity.
 
-    Returns:
-        pd.DataFrame: Combined DataFrame of all simulations for the model.
-    """
-    all_parquet_files = [os.path.join(maturity_folder_path, f) for f in os.listdir(maturity_folder_path) if f.endswith(".parquet")]
-    if all_parquet_files:
-        # Concatenate all parquet files for the current model
-        model_simulations = pd.concat([pd.read_parquet(file) for file in all_parquet_files], ignore_index=True)
-        model_simulations["model"] = model  # Add a column to identify the model
-        return model_simulations
+#with tab_returns_out_of_sample:
+elif selected_tab == "Returns out-of-sample metrics":
+    st.title("Returns Out-of-Sample Metrics")
+
+    # Frequency filter
+    selected_frequency = st.radio(
+        "Select frequency",
+        ["annual", "monthly"],
+        index=0,
+        horizontal=True,
+        key="returns_oos_frequency_selector"
+    )
+
+    # Get available models for estimated returns
+    estimated_returns_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns")
+    estimated_models = [f.name for f in os.scandir(estimated_returns_folder) if f.is_dir()]
+    benchmark_model = "AR_1"
+    estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
+
+    # Get available maturities from observed_returns AR_1
+    returns_observed_folder = os.path.join(base_folder, selected_country, "returns", "observed_returns", benchmark_model, selected_frequency)
+    sample_file_path = os.path.join(returns_observed_folder, "forecasts.csv")
+    if os.path.exists(sample_file_path):
+        sample_data = pd.read_csv(sample_file_path)
+        available_maturities = sample_data["maturity"].unique()
     else:
-        return pd.DataFrame()  # Return an empty DataFrame if no files are found
+        available_maturities = np.array([])
 
-with tab_simulation_comparison:
+    filter_cols = st.columns(2)
+    with filter_cols[0]:
+        selected_models = st.multiselect(
+            "Select models",
+            estimated_models_with_labels,
+            default=estimated_models[:1],
+            key="returns_oos_models_selector"
+        )
+        include_benchmark = f"{benchmark_model} (Benchmark)" in selected_models
+
+    with filter_cols[1]:
+        selected_maturities = st.multiselect(
+            "Select maturities to plot",
+            sorted(available_maturities),
+            default=sorted(available_maturities)[:1],
+            key="returns_oos_maturities_selector"
+        )
+
+    # Loop over maturities and create plots
+    # Loop over maturities and create plots
+    for maturity in selected_maturities:
+        st.subheader(f"{maturity} years maturity")
+        col1, col2 = st.columns(2)
+
+        # Left Panel: RMSE by Execution Date
+        with col1:
+            execution_data = []
+            for model in selected_models:
+                if model == f"{benchmark_model} (Benchmark)":
+                    metrics_folder = os.path.join(
+                        base_folder, selected_country, "returns", "observed_returns", benchmark_model, selected_frequency
+                    )
+                else:
+                    metrics_folder = os.path.join(
+                        base_folder, selected_country, "returns", "estimated_returns", model, selected_frequency
+                    )
+                exec_file = os.path.join(metrics_folder, "outofsample_metrics_by_execution_date.csv")
+                if os.path.exists(exec_file):
+                    exec_df = pd.read_csv(exec_file)
+                    filtered_df = exec_df[exec_df["maturity"] == maturity].copy()
+                    if model == f"{benchmark_model} (Benchmark)" and not filtered_df.empty:
+                        filtered_df["rmse"] = filtered_df["rmse"] / 100
+                    filtered_df["model"] = model
+                    execution_data.append(filtered_df)
+            if execution_data:
+                combined_data = pd.concat(execution_data, ignore_index=True)
+                fig = px.line(
+                    combined_data,
+                    x="execution_date",
+                    y="rmse",
+                    color="model",
+                    title="RMSE by execution date",
+                    labels={"rmse": "RMSE", "execution_date": "Execution Date"}
+                )
+                fig.update_layout(
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning(f"No data available for RMSE by Execution Date for {maturity}.")
+
+        # Right Panel: RMSE by Horizon
+        with col2:
+            horizon_data = []
+            for model in selected_models:
+                if model == f"{benchmark_model} (Benchmark)":
+                    metrics_folder = os.path.join(
+                        base_folder, selected_country, "returns", "observed_returns", benchmark_model, selected_frequency
+                    )
+                else:
+                    metrics_folder = os.path.join(
+                        base_folder, selected_country, "returns", "estimated_returns", model, selected_frequency
+                    )
+                horizon_file = os.path.join(metrics_folder, "outofsample_metrics_by_horizon.csv")
+                if os.path.exists(horizon_file):
+                    horizon_df = pd.read_csv(horizon_file)
+                    filtered_df = horizon_df[horizon_df["maturity"] == maturity].copy()
+                    if model == f"{benchmark_model} (Benchmark)" and not filtered_df.empty:
+                        filtered_df["rmse"] = filtered_df["rmse"] / 100
+                    filtered_df["model"] = model
+                    horizon_data.append(filtered_df)
+            if horizon_data:
+                combined_data = pd.concat(horizon_data, ignore_index=True)
+                fig = px.line(
+                    combined_data,
+                    x="horizon",
+                    y="rmse",
+                    color="model",
+                    title="RMSE by horizon",
+                    labels={"rmse": "RMSE", "horizon": "Horizon"}
+                )
+                fig.update_layout(
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning(f"No data available for RMSE by Horizon for {maturity}.")
+
+
+
+elif selected_tab == "Returns forward looking distributions":
+#with tab_simulation_comparison:
     st.title("Returns Forward Looking Distributions")
+
+    # Get available models for estimated returns
+    estimated_returns_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns")
+    estimated_models = [f.name for f in os.scandir(estimated_returns_folder) if f.is_dir()]
+    benchmark_model = "AR_1"
+    estimated_models_with_labels = estimated_models + [f"{benchmark_model} (Benchmark)"]
+
+    # For returns tabs
+    returns_observed_folder = os.path.join(base_folder, selected_country, "returns", "observed_returns", benchmark_model, "annual")
+    sample_file_path = os.path.join(returns_observed_folder, "forecasts.csv")
+    if os.path.exists(sample_file_path):
+        sample_data = pd.read_csv(sample_file_path)
+        available_maturities = sample_data["maturity"].unique()
+    else:
+        available_maturities = np.array([])  # or []
 
     # Filters: Model and Maturity Selection
     tab_simulation_comparison_filters = st.columns(2)
@@ -1789,8 +2059,9 @@ with tab_simulation_comparison:
         # Loop through each selected model
         for model in selected_models:
             # Adjust folder paths for the model and maturity
-            maturity_folder = f"{selected_maturity}_years"  # Format maturity as "X.XX_years"
-            folder_path = os.path.join(base_folder, selected_country, "returns", "estimated_returns", model, "annual", maturity_folder)
+            maturity_folder = f"{selected_maturity.replace(' ', '_')}"  # Format maturity as "X.XX_years"
+            folder_path = os.path.join(base_folder, selected_country, "returns", "estimated_returns", model, "annual", "simulations", 
+                                       maturity_folder)
 
             if os.path.exists(folder_path):
                 # Load the simulations for the current model using caching
@@ -1877,7 +2148,7 @@ with tab_simulation_comparison:
             st.subheader(f"KDE Distributions for Execution Date: {selected_execution_date}")
 
             # Get unique horizons
-            unique_horizons = sorted(execution_date_data["horizon_years"].unique())
+            unique_horizons = sorted(execution_date_data["horizon"].unique())
 
             # Create a 2x3 grid using Streamlit columns
             rows = []
@@ -1892,7 +2163,7 @@ with tab_simulation_comparison:
 
                 with rows[row_idx][col_idx]:
                     # Filter data for the current horizon
-                    horizon_data = execution_date_data[execution_date_data["horizon_years"] == horizon]
+                    horizon_data = execution_date_data[execution_date_data["horizon"] == horizon]
 
                     # Create a Plotly figure for the current horizon
                     fig_kde = go.Figure()
@@ -2004,3 +2275,173 @@ with tab_simulation_comparison:
                 # Display the "All Horizons" plot
                 st.plotly_chart(fig_all_horizons, use_container_width=True)
                 
+elif selected_tab == "Returns CRPS analysis":
+    import xarray as xr
+    from scores.probability import crps_for_ensemble
+
+    st.title("CRPS Analysis of Simulated Returns Distributions")
+
+    # Model, frequency, and maturity selection
+    estimated_returns_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns")
+    estimated_models = [f.name for f in os.scandir(estimated_returns_folder) if f.is_dir()]
+    frequencies = ["monthly", "annual"]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        selected_models = st.multiselect("Select models", estimated_models, default=estimated_models[:1], key="crps_models_selector")
+    with col2:
+        selected_frequency = st.selectbox("Select frequency", frequencies, key="crps_frequency_selector")
+    # Get available maturities from simulation folders (use first selected model for listing)
+    sim_base_folder = os.path.join(estimated_returns_folder, selected_models[0], selected_frequency, "simulations") if selected_models else ""
+    maturities = [f for f in os.listdir(sim_base_folder) if os.path.isdir(os.path.join(sim_base_folder, f))] if sim_base_folder else []
+    with col3:
+        selected_maturity = st.selectbox("Select maturity", maturities, key="crps_maturity_selector")
+
+    # Prepare results for all selected models
+    results_all_models = []
+    for selected_model in selected_models:
+        forecasts_file = os.path.join(estimated_returns_folder, selected_model, selected_frequency, "forecasts.csv")
+        if not os.path.exists(forecasts_file):
+            continue
+        data_obs = pd.read_csv(forecasts_file)
+        data_obs["forecast_date"] = pd.to_datetime(data_obs["forecast_date"])
+        data_obs["execution_date"] = pd.to_datetime(data_obs["execution_date"])
+
+        maturity_path = os.path.join(estimated_returns_folder, selected_model, selected_frequency, "simulations", selected_maturity)
+        if not os.path.isdir(maturity_path):
+            continue
+
+        parquet_files = [f for f in os.listdir(maturity_path) if f.endswith(".parquet")]
+        for file in parquet_files:
+            execution_date_str = file.split("_")[-1].replace(".parquet", "")
+            try:
+                execution_date = pd.to_datetime(execution_date_str, format="%d%m%Y")
+            except Exception:
+                continue
+
+            # Load simulation data
+            data_sim = pd.read_parquet(os.path.join(maturity_path, file))
+            data_sim = data_sim.sort_values(by=["forecast_date", "simulation_id"])
+            data_sim["forecast_date"] = pd.to_datetime(data_sim["forecast_date"])
+            data_sim = data_sim.dropna(subset=["monthly_returns"])
+
+            obs_subset = data_obs[
+                (data_obs["execution_date"] == execution_date) &
+                (data_obs["maturity"] == selected_maturity.replace("_years", " years"))
+            ]
+            if obs_subset.empty:
+                continue
+
+            import xarray as xr
+            from scores.probability import crps_for_ensemble
+
+            ensemble_forecast = xr.DataArray(
+                data=data_sim.pivot(index="forecast_date", columns="simulation_id", values="monthly_returns").values,
+                dims=["time", "ensemble_member"],
+                coords={
+                    "time": data_sim["forecast_date"].unique(),
+                    "ensemble_member": data_sim["simulation_id"].unique(),
+                },
+            )
+
+            obs_unique = obs_subset.groupby("forecast_date", as_index=False).agg({"actual": "mean"})
+            obs_array = xr.DataArray(
+                data=obs_unique["actual"].values,
+                dims=["time"],
+                coords={"time": obs_unique["forecast_date"].values},
+            )
+
+            obs_array, ensemble_forecast = xr.align(obs_array, ensemble_forecast, join="inner")
+
+            crps_values = crps_for_ensemble(
+                ensemble_forecast, obs_array, ensemble_member_dim="ensemble_member", method="ecdf", preserve_dims="time"
+            )
+
+            for i, forecast_date in enumerate(ensemble_forecast.time.values):
+                results_all_models.append({
+                    "model": selected_model,
+                    "execution_date": execution_date,
+                    "maturity": selected_maturity,
+                    "forecast_date": forecast_date,
+                    "crps": crps_values[i].item(),
+                })
+
+    # Convert results to DataFrame
+    results_df = pd.DataFrame(results_all_models)
+    if results_df.empty:
+        st.warning("No CRPS results available for the selected filters.")
+        st.stop()
+
+    # Compute horizon in months
+    results_df["horizon"] = (results_df["forecast_date"].dt.year - results_df["execution_date"].dt.year) * 12 + \
+                            (results_df["forecast_date"].dt.month - results_df["execution_date"].dt.month)
+    results_df["maturity_num"] = results_df["maturity"].str.extract(r"([\d\.]+)").astype(float)
+
+    # --- NEW: Line graph of average CRPS by execution date for each model ---
+    st.subheader("Average CRPS by Execution Date (across forecast horizons)")
+
+    crps_by_exec = (
+        results_df.groupby(["model", "execution_date"], as_index=False)
+        .agg({"crps": "mean"})
+    )
+
+    import plotly.express as px
+    fig = px.line(
+        crps_by_exec,
+        x="execution_date",
+        y="crps",
+        color="model",
+        labels={"execution_date": "Execution Date", "crps": "Average CRPS"},
+        title="Average CRPS by Execution Date (compare models)"
+    )
+    fig.update_layout(
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+        template="plotly_white"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Aggregate CRPS by horizon and maturity
+    horizon_results = results_df.groupby(["horizon", "maturity_num"], as_index=False).agg({"crps": "mean"})
+    heatmap_data = horizon_results.pivot(index="horizon", columns="maturity_num", values="crps")
+
+    st.subheader("CRPS Heatmap by Horizon and Maturity")
+    fig_heatmap = px.imshow(
+        heatmap_data.T,
+        labels={"x": "Horizon (Months)", "y": "Maturity", "color": "CRPS"},
+        color_continuous_scale="Viridis",
+        aspect="auto"
+    )
+    st.plotly_chart(fig_heatmap, use_container_width=True)
+
+    # Bar plot: Average CRPS by Maturity
+    st.subheader("Average CRPS by Maturity")
+    bar_data = results_df.groupby(["maturity_num"], as_index=False).agg({"crps": "mean"})
+    fig_bar = px.bar(
+        bar_data,
+        x="maturity_num",
+        y="crps",
+        labels={"maturity_num": "Maturity", "crps": "Average CRPS"},
+        color="crps",
+        color_continuous_scale="Viridis"
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # CRPS trends over forecast dates for selected execution date and maturity
+    st.subheader("CRPS Trends Over Forecast Dates")
+    execution_dates_to_plot = results_df["execution_date"].unique()
+    selected_execution_date = st.selectbox("Select execution date", execution_dates_to_plot, key="crps_exec_date_selector")
+    subset = results_df[
+        (results_df["execution_date"] == selected_execution_date) &
+        (results_df["maturity"] == selected_maturity)
+    ]
+    if not subset.empty:
+        fig_trend = px.line(
+            subset,
+            x="forecast_date",
+            y="crps",
+            title=f"CRPS Trends Over Forecast Dates ({selected_maturity}, Execution Date: {selected_execution_date.date()})",
+            labels={"forecast_date": "Forecast Date", "crps": "CRPS"}
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
+    else:
+        st.warning("No CRPS trend data for selected execution date and maturity.")
