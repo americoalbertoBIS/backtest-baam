@@ -1,5 +1,4 @@
 execution_date,indicator,metric,model,target_col,value
-<<<<<<< HEAD
 1989-10-01,const,coefficient,AR(1) + Inflation (UCSV),beta2,0.08082747465506575
 1989-10-01,const,p_value,AR(1) + Inflation (UCSV),beta2,0.16247610857031114
 1989-10-01,beta2,coefficient,AR(1) + Inflation (UCSV),beta2,0.9247987815385926
@@ -3390,7 +3389,6 @@ execution_date,indicator,metric,model,target_col,value
 2025-01-01,beta2,p_value,AR(1) + Inflation (UCSV),beta2,0.0
 2025-01-01,inflation,coefficient,AR(1) + Inflation (UCSV),beta2,-0.0028986636050463976
 2025-01-01,inflation,p_value,AR(1) + Inflation (UCSV),beta2,0.6735274312572258
-=======
 1989-10-01,const,coefficient,AR(1) + Inflation (UCSV),beta2,0.08082747465505884
 1989-10-01,const,p_value,AR(1) + Inflation (UCSV),beta2,0.16247610857034572
 1989-10-01,beta2,coefficient,AR(1) + Inflation (UCSV),beta2,0.9247987815385931
@@ -6781,6 +6779,5 @@ execution_date,indicator,metric,model,target_col,value
 2025-01-01,beta2,p_value,AR(1) + Inflation (UCSV),beta2,0.0
 2025-01-01,inflation,coefficient,AR(1) + Inflation (UCSV),beta2,-0.00289866360504518
 2025-01-01,inflation,p_value,AR(1) + Inflation (UCSV),beta2,0.6735274312573538
->>>>>>> 8347d42e9d15b734885ae05f426b1be5c437f3e8
 2025-01-01,model,adjusted_r_squared,AR(1) + Inflation (UCSV),beta2,0.9432016290270177
 2025-01-01,model,n_obs,AR(1) + Inflation (UCSV),beta2,848.0

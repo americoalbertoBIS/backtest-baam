@@ -1,5 +1,4 @@
 execution_date,indicator,metric,model,target_col,value
-<<<<<<< HEAD
 1989-10-01,const,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.1959758975527295
 1989-10-01,const,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.004123447707895455
 1989-10-01,beta2,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.8902231695144304
@@ -4238,7 +4237,6 @@ execution_date,indicator,metric,model,target_col,value
 2025-01-01,output_gap,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,5.371702587237882e-07
 2025-01-01,inflation,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,-0.020751517790139222
 2025-01-01,inflation,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.006781261988250166
-=======
 1989-10-01,const,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.1959758975527191
 1989-10-01,const,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.0041234477078972475
 1989-10-01,beta2,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.8902231695144318
@@ -8477,6 +8475,5 @@ execution_date,indicator,metric,model,target_col,value
 2025-01-01,output_gap,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,5.371702587240297e-07
 2025-01-01,inflation,coefficient,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,-0.020751517790137647
 2025-01-01,inflation,p_value,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.006781261988254632
->>>>>>> 8347d42e9d15b734885ae05f426b1be5c437f3e8
 2025-01-01,model,adjusted_r_squared,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,0.9448032211192036
 2025-01-01,model,n_obs,AR(1) + Output Gap (Direct) + Inflation (UCSV),beta2,848.0

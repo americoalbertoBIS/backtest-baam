@@ -20,6 +20,7 @@ from config_paths import SAVE_DIR
 
 #CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 BETAS_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+BETAS_DIR = r'C:\git\backtest-baam\data'
 #SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 #LOG_DIR = r"C:\git\backtest-baam\logs"
 LOG_DIR = r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\logs"
@@ -177,13 +178,14 @@ def main():
                          "Mixed_Model",
                          "Mixed_Model_curvMacro",
                          "Mixed_Model_MRM"]  # <-- Set your desired subset here
+        
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
     else:
         selected_models_configurations = models_configurations
     
     # Determine the number of workers for parallel processing
-    max_workers = max(1, multiprocessing.cpu_count() // 3)
+    max_workers = max(1, multiprocessing.cpu_count() // 2)
     
     for country in countries:
         
@@ -308,7 +310,7 @@ def main():
                 annual_returns_all, 
                 Path(SAVE_DIR) / country / "returns" / "estimated_returns" / model_name / "annual"
             )
-            
+
     logger.info("Out-of-sample metrics saved successfully.")
 
 if __name__ == "__main__":
