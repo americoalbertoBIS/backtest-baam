@@ -1,9 +1,0 @@
-execution_date,indicator,metric,model,target_col,value
-1956-06-01,const,coefficient,AR(1) + Inflation (UCSV) - MRM,beta1,0.11178034621751312
-1956-06-01,const,p_value,AR(1) + Inflation (UCSV) - MRM,beta1,0.15522904272532456
-1956-06-01,beta1,coefficient,AR(1) + Inflation (UCSV) - MRM,beta1,1.0131377655135876
-1956-06-01,beta1,p_value,AR(1) + Inflation (UCSV) - MRM,beta1,3.831993894185662e-10
-1956-06-01,inflation,coefficient,AR(1) + Inflation (UCSV) - MRM,beta1,-1.5443971546759112
-1956-06-01,inflation,p_value,AR(1) + Inflation (UCSV) - MRM,beta1,0.6283512970614893
-1956-06-01,model,adjusted_r_squared,AR(1) + Inflation (UCSV) - MRM,beta1,0.952743371696523
-1956-06-01,model,n_obs,AR(1) + Inflation (UCSV) - MRM,beta1,25.0

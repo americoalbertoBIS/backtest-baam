@@ -195,7 +195,7 @@ def generate_and_save_bootstrap_indices(
     """
     records = []
     for exec_date in execution_dates:
-        available_dates = df.ffill().dropna().loc[:exec_date].index
+        available_dates = df.ffill().dropna().loc[:exec_date].index[12:] # skip first year of residuals
         boot_indices = generate_bootstrap_indices(
             available_dates, num_simulations, max_horizon, 
             bootstrap_type=bootstrap_type, block_length=block_length, half_life=half_life
