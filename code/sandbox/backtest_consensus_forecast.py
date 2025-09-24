@@ -20,7 +20,7 @@ from data_preparation.data_loader import DataLoader
 from data_preparation.conensus_forecast import ConsensusForecast
 from modeling.macro_modeling import convert_gdp_to_monthly
 from config_paths import QUARTERLY_CF_FILE_PATH, MONTHLY_CF_FILE_PATH
-from medau import read_fred
+from medconn import read_fred
 
 
 
@@ -393,3 +393,111 @@ master_rmse_horizon.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\
 master_rmse_exec.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_exec_all_countries_indicators.csv", index=False)
 master_rmse_horizon_exec.to_csv(r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data\rmse_horizon_exec_all_countries_indicators.csv", index=False)
 
+#%%
+
+import pandas as pd
+data_folder = r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\consensus_backtest'
+master_df = pd.read_csv(rf"{data_folder}\backtest_results_all_countries_indicators.csv")
+master_rmse_horizon = pd.read_csv(rf"{data_folder}\rmse_horizon_all_countries_indicators.csv")
+master_rmse_exec = pd.read_csv(rf"{data_folder}\rmse_exec_all_countries_indicators.csv")
+master_rmse_horizon_exec = pd.read_csv(rf"{data_folder}\rmse_horizon_exec_all_countries_indicators.csv")
+
+# Example for US GDP
+country = "US"
+indicator = "GDP"
+
+# Filter for the country/indicator
+rmse_horizon = master_rmse_horizon[(master_rmse_horizon['country'] == country) & (master_rmse_horizon['indicator'] == indicator)]
+rmse_exec = master_rmse_exec[(master_rmse_exec['country'] == country) & (master_rmse_exec['indicator'] == indicator)]
+rmse_exec['executionDate'] = pd.to_datetime(rmse_exec['executionDate'])
+rmse_horizon_exec = master_rmse_horizon_exec[(master_rmse_horizon_exec['country'] == country) & (master_rmse_horizon_exec['indicator'] == indicator)]
+rmse_horizon_exec['executionDate'] = pd.to_datetime(rmse_horizon_exec['executionDate'])
+# Plot
+plot_rmse_by_horizon(rmse_horizon, country, indicator)
+plot_rmse_by_execution_date(rmse_exec, country, indicator)
+plot_rmse_by_horizon_and_execution(rmse_horizon_exec, country, indicator)
+
+# Get all unique countries and indicators
+countries = master_rmse_horizon['country'].unique()
+indicators = master_rmse_horizon['indicator'].unique()
+
+for country in countries:
+    for indicator in indicators:
+        print(f"Plotting for {country} - {indicator}")
+        rmse_horizon = master_rmse_horizon[
+            (master_rmse_horizon['country'] == country) & 
+            (master_rmse_horizon['indicator'] == indicator)
+        ]
+        rmse_exec = master_rmse_exec[
+            (master_rmse_exec['country'] == country) & 
+            (master_rmse_exec['indicator'] == indicator)
+        ]
+        rmse_exec['executionDate'] = pd.to_datetime(rmse_exec['executionDate'])
+        rmse_horizon_exec = master_rmse_horizon_exec[
+            (master_rmse_horizon_exec['country'] == country) & 
+            (master_rmse_horizon_exec['indicator'] == indicator)
+        ]
+        rmse_horizon_exec['executionDate'] = pd.to_datetime(rmse_horizon_exec['executionDate'])
+        if not rmse_horizon.empty:
+            plot_rmse_by_horizon(rmse_horizon, country, indicator)
+        if not rmse_exec.empty:
+            plot_rmse_by_execution_date(rmse_exec, country, indicator)
+        if not rmse_horizon_exec.empty:
+            plot_rmse_by_horizon_and_execution(rmse_horizon_exec, country, indicator)
+
+import matplotlib.pyplot as plt
+
+def plot_rmse_by_horizon_all_countries(master_rmse_horizon):
+    countries = master_rmse_horizon['country'].unique()
+    indicators = ["GDP", "CPI", "STR", "LTR"]
+    model_colors = ["#aa322f", "#3a6bac"]  # AR(1), Consensus
+
+    def style_subplot(ax):
+        ax.set_facecolor("#d5d6d2")
+        ax.grid(True, color="white", linestyle='-', linewidth=1, zorder=0)
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position("right")
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(True)
+        ax.spines['bottom'].set_visible(True)
+
+    for country in countries:
+        fig, axes = plt.subplots(1, 4, figsize=(18, 6), sharey=False)
+        for i, indicator in enumerate(indicators):
+            ax = axes[i]
+            df = master_rmse_horizon[
+                (master_rmse_horizon['country'] == country) &
+                (master_rmse_horizon['indicator'] == indicator)
+            ]
+            if df.empty:
+                ax.set_title(f"{indicator}\n(no data)")
+                style_subplot(ax)
+                continue
+            horizons = df['horizon']
+            ax.plot(horizons, df['RMSE_AR1'], label="AR(1)", color=model_colors[0], linewidth=2, zorder=2)
+            ax.plot(horizons, df['RMSE_consensus'], label="Consensus", color=model_colors[1], linewidth=2, zorder=2)
+            # Dots every 1 year (12 months)
+            dot_horizons = horizons[horizons % 1 == 0] if horizons.dtype.kind in 'if' else horizons
+            ax.scatter(dot_horizons, df.loc[horizons % 1 == 0, 'RMSE_AR1'], color=model_colors[0], s=40, zorder=3)
+            ax.scatter(dot_horizons, df.loc[horizons % 1 == 0, 'RMSE_consensus'], color=model_colors[1], s=40, zorder=3)
+            ax.set_title(indicator, fontsize=14)
+            ax.set_xlabel("Horizon (years)", fontsize=12)
+            #if i == 0:
+            #    ax.set_ylabel("RMSE", fontsize=12)
+            style_subplot(ax)
+            if i == 0:
+                ax.legend(
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, -0.4),
+                    ncol=1,
+                    facecolor="white",
+                    frameon=False,
+                    fontsize=12
+                )
+        #fig.suptitle(f"RMSE by Horizon for {country}", fontsize=18)
+        plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+        plt.show()
+
+# Usage:
+plot_rmse_by_horizon_all_countries(master_rmse_horizon)            

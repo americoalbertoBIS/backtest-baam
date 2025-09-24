@@ -347,7 +347,7 @@ class FactorsProcessor:
             simulated_yields.sort_index(inplace=True)  
             
             # Align indices
-            overlapping_dates = simulated_yields.index.intersection(observed_yields.dropna().index)
+            overlapping_dates = simulated_yields.dropna().index.intersection(observed_yields.dropna().index)
             aligned_simulated_yields = simulated_yields.loc[overlapping_dates]
             aligned_observed_yields = observed_yields.loc[overlapping_dates]
 
@@ -371,6 +371,8 @@ class FactorsProcessor:
             aligned_annual_returns = annual_returns.loc[overlapping_years]
             aligned_actual_annual_returns = actual_annual_returns.loc[overlapping_years]
 
+            if monthly_returns.empty or actual_monthly_returns.empty:
+                continue
             horizon_months = (monthly_returns.index.year - self.execution_date.year) * 12 + (monthly_returns.index.month - self.execution_date.month)
             # Prepare DataFrames
             monthly_df = pd.DataFrame({
@@ -381,6 +383,10 @@ class FactorsProcessor:
                 'actual': actual_monthly_returns.values,
                 'horizon': horizon_months
             })
+
+            if aligned_actual_annual_returns.empty or aligned_annual_returns.empty:
+                # Skip this maturity if no annual returns are available
+                continue
             annual_df = pd.DataFrame({
                 'forecast_date': aligned_actual_annual_returns.index,
                 'execution_date': self.execution_date,
@@ -391,6 +397,8 @@ class FactorsProcessor:
             })
             results.append((monthly_df, annual_df))
 
+        if not results:
+            return pd.DataFrame(), pd.DataFrame()
         monthly_all = pd.concat([r[0] for r in results], ignore_index=True)
         annual_all = pd.concat([r[1] for r in results], ignore_index=True)
         return monthly_all, annual_all
@@ -426,7 +434,7 @@ class FactorsProcessor:
             simulated_yields.sort_index(inplace=True)  
             
             # Align indices
-            overlapping_dates = simulated_yields.index.intersection(observed_yields.index)
+            overlapping_dates = simulated_yields.dropna().index.intersection(observed_yields.dropna().index)
             aligned_simulated_yields = simulated_yields.loc[overlapping_dates]
             aligned_observed_yields = observed_yields.loc[overlapping_dates]
 
@@ -453,6 +461,9 @@ class FactorsProcessor:
             expected_returns = annual_returns.mean(axis=1)
             volatility = annual_returns.std(axis=1)
 
+            if monthly_returns.empty or observed_returns.empty:
+                continue
+
             horizon_months = (monthly_expected_returns.index.year - self.execution_date.year) * 12 + (monthly_expected_returns.index.month - self.execution_date.month)
             # Vectorized monthly metrics
             monthly_metrics_df = pd.DataFrame({
@@ -472,6 +483,8 @@ class FactorsProcessor:
                 monthly_metrics_df[f"VaR {int(cl*100)}"] = var_series.values
                 monthly_metrics_df[f"CVaR {int(cl*100)}"] = cvar_series.values
 
+            if expected_returns.empty or observed_annual_returns.empty:
+                continue
             # Vectorized annual metrics
             annual_metrics_df = pd.DataFrame({
                 "maturity_years": maturity,
@@ -514,7 +527,7 @@ class FactorsProcessor:
         with lock:
             monthly_metrics_all_df.to_csv(
                 monthly_file_path,
-                mode='w',  # Overwrite for a fresh run
+                mode='a',  # Overwrite for a fresh run
                 header=True,
                 index=False
             )
@@ -526,7 +539,7 @@ class FactorsProcessor:
         with lock:
             annual_metrics_all_df.to_csv(
                 annual_file_path,
-                mode='w',
+                mode='a',
                 header=True,
                 index=False
             )

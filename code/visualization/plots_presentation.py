@@ -433,118 +433,70 @@ plt.tight_layout()
 plt.show()
 
 
-#%%
+#%% CONSENSUS
 
-# Plot forecasts vs actuals for returns from 1990 onward
-fig, axes = plt.subplots(1, len(maturities), figsize=(24, 6))
+import pandas as pd
+data_folder = r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\consensus_backtest'
+master_rmse_horizon = pd.read_csv(rf"{data_folder}\rmse_horizon_all_countries_indicators.csv")
 
-# Custom colors for the models
-model_colors = ["#aa322f", "#3a6bac", "#eaa121", "#633d83"]
+# Plot
+import matplotlib.pyplot as plt
 
-for idx, maturity in enumerate(maturities):
-    ax = axes[idx]
-    # Filter data from 1990 onward
-    actuals = (
-        data_ar1[(data_ar1['maturity'] == maturity) & (pd.to_datetime(data_ar1['forecast_date']) >= '2020-01-01')]
-        .groupby('forecast_date')['actual']
-        .mean()
-    )
-    actuals.index = pd.to_datetime(actuals.index)
-    ax.plot(actuals.index, actuals.values * 100, color='black', linewidth=2, label='Actual')
-    
-    # Plot forecasts for each model
-    for m_idx, (model_data, label) in enumerate([
-        (data_ar1, "AR(1) factors"),
-        (data_mixed, "Macro-based approach"),
-        (data_mixedCurvMacro, "Macro-based approach (macro-curv)")
-    ]):
-        df = model_data[(model_data['maturity'] == maturity) & (pd.to_datetime(model_data['forecast_date']) >= '2020-01-01')].copy()
-        df['forecast_date'] = pd.to_datetime(df['forecast_date'])
-        for exec_date in df['execution_date'].unique():
-            subset = df[df['execution_date'] == exec_date]
-            ax.plot(subset['forecast_date'], subset['prediction'] * 100, color=model_colors[m_idx], alpha=0.3)
-        ax.plot([], [], color=model_colors[m_idx], label=label)
-    
-    ax.set_title(f"{maturity} returns", fontsize=12)
-    ax.set_facecolor("#d5d6d2")
-    ax.grid(True, color="white", linestyle='-', linewidth=1)
-    ax.yaxis.tick_right()
-    ax.yaxis.set_label_position("right")
-    ax.spines['top'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.spines['right'].set_visible(True)
-    ax.spines['bottom'].set_visible(True)
-    ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
+def plot_rmse_by_horizon_all_countries(master_rmse_horizon):
+    countries = master_rmse_horizon['country'].unique()
+    indicators = ["GDP", "CPI", "STR", "LTR"]
+    model_colors = ["#aa322f", "#3a6bac"]  # AR(1), Consensus
 
-for ax in axes:
-    ax.legend(
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.4),
-        ncol=1,
-        facecolor="white",
-        frameon=False,
-        fontsize=12
-    )
+    def style_subplot(ax):
+        ax.set_facecolor("#d5d6d2")
+        ax.grid(True, color="white", linestyle='-', linewidth=1, zorder=0)
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position("right")
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(True)
+        ax.spines['bottom'].set_visible(True)
 
-plt.tight_layout()
-plt.show()
-# ...existing code...
-# ...existing code...
-#%%
+    for country in countries:
+        fig, axes = plt.subplots(1, 4, figsize=(18, 6), sharey=False)
+        for i, indicator in enumerate(indicators):
+            ax = axes[i]
+            df = master_rmse_horizon[
+                (master_rmse_horizon['country'] == country) &
+                (master_rmse_horizon['indicator'] == indicator)
+            ]
+            if df.empty:
+                ax.set_title(f"{indicator}\n(no data)")
+                style_subplot(ax)
+                continue
+            horizons = df['horizon']
+            ax.plot(horizons, df['RMSE_AR1'], label="AR(1)", color=model_colors[0], linewidth=2, zorder=2)
+            ax.plot(horizons, df['RMSE_consensus'], label="Consensus", color=model_colors[1], linewidth=2, zorder=2)
+            # Dots every 1 year (12 months)
+            dot_horizons = horizons[horizons % 1 == 0] if horizons.dtype.kind in 'if' else horizons
+            ax.scatter(dot_horizons, df.loc[horizons % 1 == 0, 'RMSE_AR1'], color=model_colors[0], s=40, zorder=3)
+            ax.scatter(dot_horizons, df.loc[horizons % 1 == 0, 'RMSE_consensus'], color=model_colors[1], s=40, zorder=3)
+            ax.set_title(indicator, fontsize=14)
+            ax.set_xlabel("Horizon (years)", fontsize=12)
+            #if i == 0:
+            #    ax.set_ylabel("RMSE", fontsize=12)
+            style_subplot(ax)
+            if i == 0:
+                ax.legend(
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, -0.4),
+                    ncol=1,
+                    facecolor="white",
+                    frameon=False,
+                    fontsize=12
+                )
+        fig.suptitle(f"RMSE by Horizon for {country}", fontsize=12)
+        plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+        plt.show()
 
-# ...existing code...
+# Usage:
+plot_rmse_by_horizon_all_countries(master_rmse_horizon)            
 
-# Plot only the Mixed_Model forecasts vs actuals for returns from 1990 onward
-fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-model_color = "#3a6bac"  # Blue for Mixed_Model
-
-for idx, maturity in enumerate(maturities):
-    ax = axes[idx]
-    # Filter Mixed_Model data from 1990 onward
-    df = data_mixed[(data_mixed['maturity'] == maturity) & (pd.to_datetime(data_mixed['forecast_date']) >= '2020-01-01')].copy()
-    df['forecast_date'] = pd.to_datetime(df['forecast_date'])
-    df['execution_date'] = pd.to_datetime(df['execution_date'])
-
-    # Plot all predictions for each execution_date
-    for exec_date in df['execution_date'].unique():
-        subset = df[df['execution_date'] == exec_date]
-        ax.plot(subset['forecast_date'], subset['prediction'] * 100, color=model_color, alpha=0.3)
-
-    # Add legend entry for Mixed_Model
-    ax.plot([], [], color=model_color, label="Macro-based approach")
-
-    # Plot actuals (mean by forecast_date)
-    actuals = (
-        df.groupby('forecast_date')['actual']
-        .mean()
-    )
-    actuals.index = pd.to_datetime(actuals.index)
-    ax.plot(actuals.index, actuals.values * 100, color='black', linewidth=2, label='Actual')
-
-    ax.set_title(f"{maturity} returns", fontsize=12)
-    ax.set_facecolor("#d5d6d2")
-    ax.grid(True, color="white", linestyle='-', linewidth=1)
-    ax.yaxis.tick_right()
-    ax.yaxis.set_label_position("right")
-    ax.spines['top'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.spines['right'].set_visible(True)
-    ax.spines['bottom'].set_visible(True)
-    ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
-
-for ax in axes:
-    ax.legend(
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.4),
-        ncol=1,
-        facecolor="white",
-        frameon=False,
-        fontsize=12
-    )
-
-plt.tight_layout()
-plt.show()
-# ...existing code...
 
 #%%
 # ...existing code...
