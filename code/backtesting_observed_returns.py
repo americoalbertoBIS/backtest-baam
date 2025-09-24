@@ -7,6 +7,7 @@ warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -20,8 +21,9 @@ os.chdir(r'C:\git\backtest-baam\code')
 from modeling.time_series_modeling import AR1Model
 from data_preparation.data_loader import DataLoaderYC
 from modeling.yield_curve_modeling import YieldCurveModel
+from data_preparation.data_transformations import zcb_components, seq_annual_arith_return
 
-save_dir = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+save_dir = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_test'
 
 def extract_residuals(model, execution_date):
     """
@@ -218,7 +220,7 @@ def calculate_risk_metrics_long(sim_df, value_col, observed_col=None, expected_c
                 "execution_date": execution_date,
                 "maturity": maturity,
                 "horizon": horizon,
-                "metric": f"Observed {value_col.replace('_', ' ').title()}",
+                "metric": "observed_return",
                 "value": obs_val
             })
         if expected_col and expected_col in group.columns:
@@ -227,7 +229,7 @@ def calculate_risk_metrics_long(sim_df, value_col, observed_col=None, expected_c
                 "execution_date": execution_date,
                 "maturity": maturity,
                 "horizon": horizon,
-                "metric": f"Expected {value_col.replace('_', ' ').title()}",
+                "metric": "expected_return",
                 "value": exp_val
             })
     return pd.DataFrame(metrics)
@@ -375,7 +377,7 @@ def process_forecast_outer(args):
                 latest_obs=latest_observation,
                 horizons=np.arange(1, forecast_horizon + 1),
                 execution_date=execution_date,
-                num_simulations=10  # Example: 1000 simulations
+                num_simulations=1000  # Example: 1000 simulations
             )
         
         MONTHS_IN_YEAR = 12
@@ -398,7 +400,7 @@ def process_forecast_outer(args):
         monthly_returns_long_format = monthly_returns.reset_index().melt(
             id_vars=["forecast_date"],
             var_name="simulation_id",
-            value_name="monthly_returns"
+            value_name="simulated_value"
         )
         monthly_returns_long_format["maturity"] = maturity
         monthly_returns_long_format["execution_date"] = execution_date
@@ -409,24 +411,25 @@ def process_forecast_outer(args):
         monthly_file_path = monthly_dir / f"simulations_{execution_date.strftime('%d%m%Y')}.parquet"
         monthly_returns_long_format.to_parquet(monthly_file_path, index=False)
 
+        annual_returns = monthly_returns.apply(
+                lambda col: seq_annual_arith_return(col, freq=12),
+                axis=0
+            )
         # Calculate annual returns (arithmetic sum, not compounded)
-        annual_returns = monthly_returns.groupby(np.arange(len(monthly_returns)) // MONTHS_IN_YEAR).sum()
-        annual_returns.index.name = "index"
+        #annual_returns = monthly_returns.groupby(np.arange(len(monthly_returns)) // MONTHS_IN_YEAR).sum()
+        annual_returns.index.name = "forecast_date"
 
         # Save Annual Returns in long format
         annual_returns_long_format = annual_returns.reset_index().melt(
-            id_vars=["index"],
+            id_vars=["forecast_date"],
             var_name="simulation_id",
-            value_name="annual_returns"
+            value_name="simulated_value"
         )
-        annual_returns_long_format = annual_returns_long_format.rename(columns={"index": "horizon_years"})
-        annual_returns_long_format["horizon_years"] = annual_returns_long_format["horizon_years"] + 1
+
         annual_returns_long_format["maturity"] = maturity
         annual_returns_long_format["execution_date"] = execution_date
-        annual_returns_long_format["forecast_date"] = [
-                pd.to_datetime(execution_date) + pd.DateOffset(years=int(h))
-                for h in annual_returns_long_format["horizon_years"]
-            ]
+        annual_returns_long_format["horizon"] = annual_returns_long_format['forecast_date'].dt.year - execution_date.year
+
         annual_file_path = annual_dir / f"simulations_{execution_date.strftime('%d%m%Y')}.parquet"
         annual_returns_long_format.to_parquet(annual_file_path, index=False)
 
@@ -472,39 +475,25 @@ def process_forecast_outer(args):
         )
         monthly_metrics_long = calculate_risk_metrics_long(
             monthly_returns_long_format,
-            value_col="monthly_returns",
+            value_col="simulated_value",
             observed_col="actual",
             expected_col="prediction",
             quantiles=[0.95, 0.975, 0.99]
         )
         
         # Calculate annual returns (sequential blocks, not rolling)
-        annual_returns_df = (
-            forecast_df[['maturity', 'execution_date', 'forecast_date', 'prediction', 'actual']]
-            .assign(block=lambda x: np.arange(len(x)) // MONTHS_IN_YEAR)
-            .groupby(['maturity', 'execution_date', 'block'])
-            .agg({
-                'prediction': 'sum',
-                'actual': 'sum',
-                'forecast_date': 'first'  # Start date of each annual block
-            })
-            .reset_index()
-            .rename(columns={'block': 'horizon_years'})
-        )
-
+        annual_returns_df = forecast_df[['actual', 'prediction']].apply(
+                lambda col: seq_annual_arith_return(col, freq=12),
+                axis=0
+            ).reset_index(drop=True)
         # Adjust horizon_years to start from 1
-        annual_returns_df['horizon_years'] = annual_returns_df['horizon_years'] + 1
+        annual_returns_df['horizon'] = range(1, len(annual_returns_df)+1)
         annual_returns_df["forecast_date"] = [
                 pd.to_datetime(execution_date) + pd.DateOffset(years=int(h))
-                for h in annual_returns_df["horizon_years"]
+                for h in annual_returns_df["horizon"]
             ]
-        annual_returns_df = annual_returns_df.rename(columns={
-                    "horizon_years": "horizon",
-                    "annual_return": "prediction",
-                    "annual_actual": "actual"
-                })
-
-        annual_returns_long_format = annual_returns_long_format.rename(columns={"horizon_years": "horizon"})
+        annual_returns_df["execution_date"] = execution_date
+        annual_returns_df["maturity"] = maturity
                 
         annual_returns_long_format = annual_returns_long_format.merge(
             annual_returns_df[["forecast_date", "maturity", "execution_date", "horizon", "actual", "prediction"]],
@@ -515,7 +504,7 @@ def process_forecast_outer(args):
         
         annual_metrics_long = calculate_risk_metrics_long(
             annual_returns_long_format,
-            value_col="annual_returns",
+            value_col="simulated_value",
             observed_col="actual",
             expected_col="prediction",
             quantiles=[0.95, 0.975, 0.99]
@@ -577,7 +566,7 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
     with ProcessPoolExecutor(max_workers=num_outer_workers) as executor:
         futures = {executor.submit(process_forecast_outer, task): task for task in tasks}
 
-        for future in as_completed(futures):
+        for future in tqdm(as_completed(futures), total=total_tasks, desc="Forecasting"):
             try:
                 (forecast_annual, forecasts, residuals, 
                  metrics, monthly_metrics_long, annual_metrics_long) = future.result()
@@ -606,7 +595,7 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
 
 
 if __name__ == "__main__":
-    countries = ['US', 'EA', 'UK']
+    countries = ['US'] #, 'EA', 'UK'
     
     for country in countries:
         print(country)
@@ -628,7 +617,8 @@ if __name__ == "__main__":
         annual_dir.mkdir(parents=True, exist_ok=True)
 
         # Load the yield curve data
-        data_loader = DataLoaderYC(r'L:\\RMAS\\Resources\\BAAM\\OpenBAAM\\Private\\Data\\BaseDB.mat')
+        DATA_PATH = r"\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data"
+        data_loader = DataLoaderYC(rf'{DATA_PATH}\BaseDB.mat')
         _, _, _ = data_loader.load_data()
         if country == 'EA':
             selectedCurveName, selected_curve_data, modelParams = data_loader.process_data('DE')
@@ -650,19 +640,31 @@ if __name__ == "__main__":
             index=dates_str[-len(observed_yields):]
         )
         observed_yields_df.index = pd.to_datetime(observed_yields_df.index)
-        observed_yields_df_resampled = observed_yields_df.resample('MS').mean()
+        observed_yields_df_resampled = observed_yields_df.resample('MS').mean()/100
         #observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]  # Drop the first column (e.g., 0.08333 years)
-        observed_returns_df = observed_yields_df_resampled.pct_change(fill_method=None).dropna(how='all')
+        
+        zcb_results = {}
+        for col in observed_yields_df_resampled.columns:
+            # Extract the numeric maturity value from the column name, e.g., "1.0 years" -> 1.0
+            maturity_val = float(col.split()[0])
+            zcb_results[col] = zcb_components(
+                observed_yields_df_resampled[col].dropna(),  # Series for this maturity
+                maturity=maturity_val,
+                freq=12,
+                carry_method='approx'
+            )
+
+        # Optionally, combine results into a DataFrame (if shapes align)
+        zcb_observed_df = pd.DataFrame(zcb_results)
+        actual_monthly_returns = zcb_observed_df.copy()
         
         # Example: Only use the first 5 dates for each maturity
-        subset_execution_dates = {}
-        for maturity in observed_returns_df.columns:
-            custom_dates = pd.date_range(start="2002-01-01", end="2002-05-01", freq="MS")
+        custom_dates = pd.date_range(start="2002-01-01", end="2002-05-01", freq="MS")
         
         # Run forecasts with a timer
         (df_predictions_annual, df_predictions, df_insample_residuals, 
         df_insample_metrics, df_monthly_metrics_long, df_annual_metrics_long) = run_forecasts_parallel(
-            observed_returns_df,
+            actual_monthly_returns,
             base_dir,
             forecast_horizon=60,
             num_outer_workers=4, 
