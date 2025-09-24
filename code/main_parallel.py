@@ -189,7 +189,7 @@ if __name__ == "__main__":
     test = False
     if test:
         model_name_to_test = "AR(1) + Output Gap (Direct) + Inflation (UCSV)"
-        target_col_to_test = "beta1"
+        target_col_to_test = "beta3"
     else:
         model_name_to_test = None
         target_col_to_test = None
