@@ -20,7 +20,7 @@ from config_paths import SAVE_DIR
 
 #CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
 BETAS_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
-BETAS_DIR = r'C:\git\backtest-baam\data'
+#BETAS_DIR = r'C:\git\backtest-baam\data'
 #SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 #LOG_DIR = r"C:\git\backtest-baam\logs"
 LOG_DIR = r"\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\logs"
@@ -157,7 +157,7 @@ def process_execution_date(country, model_name, model_config, execution_date, yi
     except ValueError as e:
         # Log the error and skip processing for this execution date
         logging.warning(f"Skipping execution date {execution_date}: {e}")
-        return None
+        return None, None, None
 
 def main():
     """
@@ -167,7 +167,7 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US']  # Add other countries if needed , 'EA', 'UK' US
+    countries = ['US','EA']  # Add other countries if needed , 'EA', 'UK' US
     
     # Define the subset of models to run
     run_all_models = False
@@ -175,9 +175,10 @@ def main():
     if not run_all_models:
         models_to_run = ["AR_1",
                          "Mixed_Model",
-                         "Mixed_Model_curvMacro",
-                         "Mixed_Model_MRM",
-                         "AR_1_Output_Gap_Direct_Inflation_UCSV"]  # <-- Set your desired subset here
+                         #"Mixed_Model_curvMacro",
+                         #"Mixed_Model_MRM",
+                         #"AR_1_Output_Gap_Direct_Inflation_UCSV"
+                         ]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
     else:
@@ -224,7 +225,7 @@ def main():
             execution_dates = sorted(execution_dates)
             
             execution_dates_filter = False
-            custom_dates = pd.date_range(start="1995-01-01", end="2000-01-01", freq="MS")
+            custom_dates = pd.date_range(start="1999-07-01", end="2000-01-01", freq="MS")
             if execution_dates_filter:
                 execution_dates = [d for d in execution_dates if d in custom_dates]
             
@@ -279,9 +280,14 @@ def main():
                 for future in tqdm(as_completed(futures), total=len(futures), desc=f"Processing {model_name} for {country}"):
                     try:
                         yields_predictions, monthly_returns_df, annual_returns_df = future.result()
-                        all_yields_predictions.append(yields_predictions)  # Collect predictions
-                        all_monthly_returns.append(monthly_returns_df)
-                        all_annual_returns.append(annual_returns_df)                        
+                        if yields_predictions is not None:
+                            all_yields_predictions.append(yields_predictions)
+                        if monthly_returns_df is not None:
+                            all_monthly_returns.append(monthly_returns_df)
+                        if annual_returns_df is not None:
+                            all_annual_returns.append(annual_returns_df)
+                    except Exception as e:
+                        logger.error(f"Error in parallel processing: {e}", exc_info=True)                       
                     except Exception as e:
                         logger.error(f"Error in parallel processing: {e}", exc_info=True)
 
