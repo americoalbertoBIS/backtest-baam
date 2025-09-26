@@ -167,7 +167,7 @@ def main():
     data_loader = DataLoaderYC(r'\\msfsshared\bnkg\RMAS\Resources\BAAM\OpenBAAM\Private\Data\BaseDB.mat')
 
     # Define the countries and models to process
-    countries = ['US','EA']  # Add other countries if needed , 'EA', 'UK' US
+    countries = ['UK']  # Add other countries if needed , 'EA', 'UK' US
     
     # Define the subset of models to run
     run_all_models = False
@@ -175,9 +175,9 @@ def main():
     if not run_all_models:
         models_to_run = ["AR_1",
                          "Mixed_Model",
-                         #"Mixed_Model_curvMacro",
-                         #"Mixed_Model_MRM",
-                         #"AR_1_Output_Gap_Direct_Inflation_UCSV"
+                         "Mixed_Model_curvMacro",
+                         "Mixed_Model_MRM",
+                         "AR_1_Output_Gap_Direct_Inflation_UCSV"
                          ]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}
