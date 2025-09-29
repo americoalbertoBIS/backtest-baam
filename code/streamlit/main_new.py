@@ -175,46 +175,14 @@ target_variables = ["beta1", "beta2", "beta3"]
 #     "Returns backtesting overview", "Returns out-of-sample metrics", "Returns forward looking distributions"]
 #)
 
-from streamlit_option_menu import option_menu
+tab_factors, tab_out_of_sample, tab_in_sample, tab_simulations, tab_yields_1, tab_yields, tab_sim_yields, tab_returns, tab_returns_out_of_sample, tab_simulation_comparison = st.tabs(
+    ["Factors backtesting overview","Factors out-of-sample metrics", "Factors in-sample metrics", "Factors simulations analysis", 
+     "Yields backtesting overview", "Yields out-of-sample metrics", "Yields simulations analysis", 
+     "Returns backtesting overview", "Returns out-of-sample metrics", "Returns forward looking distributions"]
+)
 
-tab_names = [
-    "Factors backtesting overview",
-    "Factors out-of-sample metrics",
-    "Factors in-sample metrics",
-    "Factors simulations analysis",
-    "Yields backtesting overview",
-    "Yields out-of-sample metrics",
-    "Yields simulations analysis",
-    "Returns backtesting overview",
-    "Returns out-of-sample metrics",
-    "Returns forward looking distributions",
-    "Returns CRPS analysis"
-]
-
-tab_icons = [
-    "bar-chart", "graph-up", "clipboard-data", "activity",
-    "bar-chart", "graph-up", "activity",
-    "bar-chart", "graph-up", "activity"
-]
-
-with st.sidebar:
-    selected_tab = option_menu(
-        "Backtesting Dashboard",
-        tab_names,
-        icons=tab_icons,
-        menu_icon="cast",
-        default_index=0,
-        orientation="vertical",
-        styles={
-            "container": {"padding": "0!important", "background-color": "#fafafa"},
-            "icon": {"color": "#3a6bac", "font-size": "18px"},
-            "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#3a6bac", "color": "white"},
-        }
-    )
-
-if selected_tab == "Factors backtesting overview":
-#with tab_factors:
+#if selected_tab == "Factors backtesting overview":
+with tab_factors:
     st.title("Actuals vs predictions for factors")
 
     # Create a 3-column layout for the plots
@@ -368,9 +336,9 @@ if selected_tab == "Factors backtesting overview":
                 else:
                     st.warning(f"No data available for {target_variable}.")
 
-elif selected_tab == "Factors out-of-sample metrics":
+#elif selected_tab == "Factors out-of-sample metrics":
 # Out-of-Sample Model Comparison Tab
-#with tab_out_of_sample:
+with tab_out_of_sample:
     st.title("Out-of-sample model comparison")
 
     # Determine the date range for the data
@@ -560,9 +528,9 @@ elif selected_tab == "Factors out-of-sample metrics":
             else:
                 st.warning(f"No data available for RMSE by Execution Date ({target_variable})")
 
-elif selected_tab == "Factors in-sample metrics":               
+#elif selected_tab == "Factors in-sample metrics":               
 # In-Sample Model Specifics Tab
-#with tab_in_sample:
+with tab_in_sample:
     st.title("Factors in-sample model metrics")
 
     # Load all in-sample metrics data to determine the date range
@@ -570,6 +538,7 @@ elif selected_tab == "Factors in-sample metrics":
     for model in models:
         for target_variable in target_variables:
             data = load_data(folder_path, model, target_variable, "insample_metrics.csv")
+            #data = data.drop_duplicates(subset=["execution_date", "metric"])
             if data is not None:
                 data["execution_date"] = pd.to_datetime(data["execution_date"])
                 all_data.append(data)
@@ -607,7 +576,7 @@ elif selected_tab == "Factors in-sample metrics":
     insample_data = {}
     for target_variable, model in selected_models.items():
         insample_data[target_variable] = load_data(folder_path, model, target_variable, "insample_metrics.csv")
-
+        insample_data[target_variable] = insample_data[target_variable].drop_duplicates(subset=["execution_date", "indicator", "target_col", "metric"], keep='first')
     # Replace 'beta1', 'beta2', 'beta3' in 'indicator' with 'lagged beta'
     for target_variable, data in insample_data.items():
         if data is not None:
@@ -635,6 +604,7 @@ elif selected_tab == "Factors in-sample metrics":
                         filtered_data = insample_data[target_variable][
                             insample_data[target_variable]["metric"] == "adjusted_r_squared"
                         ]
+                        
                         fig = px.line(
                             filtered_data,
                             x="execution_date",
@@ -659,6 +629,7 @@ elif selected_tab == "Factors in-sample metrics":
                             pivot_data = filtered_data.pivot(
                                 index="execution_date", columns="metric", values="value"
                             ).reset_index()
+                            pivot_data["execution_date"] = pd.to_datetime(pivot_data["execution_date"])
                             if "coefficient" in pivot_data.columns and "p_value" in pivot_data.columns:
                                 fig = create_dual_axis_plot(
                                     data=pivot_data,
@@ -671,8 +642,8 @@ elif selected_tab == "Factors in-sample metrics":
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
 
-elif selected_tab == "Factors simulations analysis":
-#with tab_simulations:
+#elif selected_tab == "Factors simulations analysis":
+with tab_simulations:
     st.title("Factors simulations analysis: heatmaps, fan chart, and distributions")
 
     # Dropdown to select a specific model and beta
@@ -1061,8 +1032,8 @@ elif selected_tab == "Factors simulations analysis":
     else:
         st.warning("No data available for the selected model and beta.")
 
-elif selected_tab == "Yields backtesting overview":
-#with tab_yields_1:
+#elif selected_tab == "Yields backtesting overview":
+with tab_yields_1:
     st.title("Actuals vs predictions for yields")
 
     # Dynamically update the folder path for yields based on the selected country
@@ -1266,8 +1237,8 @@ elif selected_tab == "Yields backtesting overview":
         else:
             st.warning(f"No data available for Yields (Maturity: {selected_maturity}).")
 
-elif selected_tab == "Yields out-of-sample metrics":
-#with tab_yields:
+#elif selected_tab == "Yields out-of-sample metrics":
+with tab_yields:
     st.title("Out-of-sample model comparison")
 
     # Dynamically update the folder path for yields based on the selected country
@@ -1526,8 +1497,8 @@ elif selected_tab == "Yields out-of-sample metrics":
             else:
                 st.warning(f"No data available for Dynamic RMSE by Horizon for {maturity}.")
 
-elif selected_tab == "Yields simulations analysis":
-#with tab_sim_yields:
+#elif selected_tab == "Yields simulations analysis":
+with tab_sim_yields:
     st.title("Yields simulations analysis: heatmaps and fan chart")
     # Dynamically update the folder path for yields based on the selected country
     yields_folder_path = os.path.join(base_folder, selected_country, "yields")
@@ -1708,8 +1679,8 @@ elif selected_tab == "Yields simulations analysis":
 
 
 
-elif selected_tab == "Returns backtesting overview":
-#with tab_returns:
+#elif selected_tab == "Returns backtesting overview":
+with tab_returns:
     st.title("Returns analysis: VaR, CVaR, observed and expected returns")
     
     # Get available models for estimated returns
@@ -1882,8 +1853,8 @@ elif selected_tab == "Returns backtesting overview":
         st.warning(f"File not found: {metrics_file}")
 
 
-#with tab_returns_out_of_sample:
-elif selected_tab == "Returns out-of-sample metrics":
+with tab_returns_out_of_sample:
+#elif selected_tab == "Returns out-of-sample metrics":
     st.title("Returns Out-of-Sample Metrics")
 
     # Frequency filter
@@ -2010,8 +1981,8 @@ elif selected_tab == "Returns out-of-sample metrics":
 
 
 
-elif selected_tab == "Returns forward looking distributions":
-#with tab_simulation_comparison:
+#elif selected_tab == "Returns forward looking distributions":
+with tab_simulation_comparison:
     st.title("Returns Forward Looking Distributions")
 
     # Get available models for estimated returns
@@ -2086,7 +2057,7 @@ elif selected_tab == "Returns forward looking distributions":
             color_palette = ["#3a6bac", "#aa322f", "#eaa121", "#633d83", "#d55b20", "#427f6d", "#784722"]
 
             # Calculate percentiles and summary statistics for each model
-            summary_data = combined_data.groupby(["execution_date", "model"])["annual_returns"].agg(
+            summary_data = combined_data.groupby(["execution_date", "model"])["simulated_value"].agg(
                 mean="mean",
                 p5=lambda x: np.percentile(x, 5),
                 p95=lambda x: np.percentile(x, 95)
@@ -2174,8 +2145,8 @@ elif selected_tab == "Returns forward looking distributions":
 
                         if not model_data.empty:
                             # Calculate KDE
-                            kde = gaussian_kde(model_data["annual_returns"])
-                            x_range = np.linspace(model_data["annual_returns"].min(), model_data["annual_returns"].max(), 500)
+                            kde = gaussian_kde(model_data["simulated_value"])
+                            x_range = np.linspace(model_data["simulated_value"].min(), model_data["simulated_value"].max(), 500)
                             y_kde = kde(x_range)
 
                             # Define the color for this model
@@ -2191,7 +2162,7 @@ elif selected_tab == "Returns forward looking distributions":
                             ))
 
                             # Calculate VaR (5th percentile)
-                            var_5 = np.percentile(model_data["annual_returns"], 5)
+                            var_5 = np.percentile(model_data["simulated_value"], 5)
 
                             # Add vertical line for VaR
                             fig_kde.add_shape(
@@ -2239,8 +2210,8 @@ elif selected_tab == "Returns forward looking distributions":
                     model_data = execution_date_data[execution_date_data["model"] == model]
 
                     if not model_data.empty:
-                        kde = gaussian_kde(model_data["annual_returns"])
-                        x_range = np.linspace(model_data["annual_returns"].min(), model_data["annual_returns"].max(), 500)
+                        kde = gaussian_kde(model_data["simulated_value"])
+                        x_range = np.linspace(model_data["simulated_value"].min(), model_data["simulated_value"].max(), 500)
                         y_kde = kde(x_range)
 
                         model_color = color_palette[i % len(color_palette)]
@@ -2274,174 +2245,3 @@ elif selected_tab == "Returns forward looking distributions":
 
                 # Display the "All Horizons" plot
                 st.plotly_chart(fig_all_horizons, use_container_width=True)
-                
-elif selected_tab == "Returns CRPS analysis":
-    import xarray as xr
-    from scores.probability import crps_for_ensemble
-
-    st.title("CRPS Analysis of Simulated Returns Distributions")
-
-    # Model, frequency, and maturity selection
-    estimated_returns_folder = os.path.join(base_folder, selected_country, "returns", "estimated_returns")
-    estimated_models = [f.name for f in os.scandir(estimated_returns_folder) if f.is_dir()]
-    frequencies = ["monthly", "annual"]
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        selected_models = st.multiselect("Select models", estimated_models, default=estimated_models[:1], key="crps_models_selector")
-    with col2:
-        selected_frequency = st.selectbox("Select frequency", frequencies, key="crps_frequency_selector")
-    # Get available maturities from simulation folders (use first selected model for listing)
-    sim_base_folder = os.path.join(estimated_returns_folder, selected_models[0], selected_frequency, "simulations") if selected_models else ""
-    maturities = [f for f in os.listdir(sim_base_folder) if os.path.isdir(os.path.join(sim_base_folder, f))] if sim_base_folder else []
-    with col3:
-        selected_maturity = st.selectbox("Select maturity", maturities, key="crps_maturity_selector")
-
-    # Prepare results for all selected models
-    results_all_models = []
-    for selected_model in selected_models:
-        forecasts_file = os.path.join(estimated_returns_folder, selected_model, selected_frequency, "forecasts.csv")
-        if not os.path.exists(forecasts_file):
-            continue
-        data_obs = pd.read_csv(forecasts_file)
-        data_obs["forecast_date"] = pd.to_datetime(data_obs["forecast_date"])
-        data_obs["execution_date"] = pd.to_datetime(data_obs["execution_date"])
-
-        maturity_path = os.path.join(estimated_returns_folder, selected_model, selected_frequency, "simulations", selected_maturity)
-        if not os.path.isdir(maturity_path):
-            continue
-
-        parquet_files = [f for f in os.listdir(maturity_path) if f.endswith(".parquet")]
-        for file in parquet_files:
-            execution_date_str = file.split("_")[-1].replace(".parquet", "")
-            try:
-                execution_date = pd.to_datetime(execution_date_str, format="%d%m%Y")
-            except Exception:
-                continue
-
-            # Load simulation data
-            data_sim = pd.read_parquet(os.path.join(maturity_path, file))
-            data_sim = data_sim.sort_values(by=["forecast_date", "simulation_id"])
-            data_sim["forecast_date"] = pd.to_datetime(data_sim["forecast_date"])
-            data_sim = data_sim.dropna(subset=["monthly_returns"])
-
-            obs_subset = data_obs[
-                (data_obs["execution_date"] == execution_date) &
-                (data_obs["maturity"] == selected_maturity.replace("_years", " years"))
-            ]
-            if obs_subset.empty:
-                continue
-
-            import xarray as xr
-            from scores.probability import crps_for_ensemble
-
-            ensemble_forecast = xr.DataArray(
-                data=data_sim.pivot(index="forecast_date", columns="simulation_id", values="monthly_returns").values,
-                dims=["time", "ensemble_member"],
-                coords={
-                    "time": data_sim["forecast_date"].unique(),
-                    "ensemble_member": data_sim["simulation_id"].unique(),
-                },
-            )
-
-            obs_unique = obs_subset.groupby("forecast_date", as_index=False).agg({"actual": "mean"})
-            obs_array = xr.DataArray(
-                data=obs_unique["actual"].values,
-                dims=["time"],
-                coords={"time": obs_unique["forecast_date"].values},
-            )
-
-            obs_array, ensemble_forecast = xr.align(obs_array, ensemble_forecast, join="inner")
-
-            crps_values = crps_for_ensemble(
-                ensemble_forecast, obs_array, ensemble_member_dim="ensemble_member", method="ecdf", preserve_dims="time"
-            )
-
-            for i, forecast_date in enumerate(ensemble_forecast.time.values):
-                results_all_models.append({
-                    "model": selected_model,
-                    "execution_date": execution_date,
-                    "maturity": selected_maturity,
-                    "forecast_date": forecast_date,
-                    "crps": crps_values[i].item(),
-                })
-
-    # Convert results to DataFrame
-    results_df = pd.DataFrame(results_all_models)
-    if results_df.empty:
-        st.warning("No CRPS results available for the selected filters.")
-        st.stop()
-
-    # Compute horizon in months
-    results_df["horizon"] = (results_df["forecast_date"].dt.year - results_df["execution_date"].dt.year) * 12 + \
-                            (results_df["forecast_date"].dt.month - results_df["execution_date"].dt.month)
-    results_df["maturity_num"] = results_df["maturity"].str.extract(r"([\d\.]+)").astype(float)
-
-    # --- NEW: Line graph of average CRPS by execution date for each model ---
-    st.subheader("Average CRPS by Execution Date (across forecast horizons)")
-
-    crps_by_exec = (
-        results_df.groupby(["model", "execution_date"], as_index=False)
-        .agg({"crps": "mean"})
-    )
-
-    import plotly.express as px
-    fig = px.line(
-        crps_by_exec,
-        x="execution_date",
-        y="crps",
-        color="model",
-        labels={"execution_date": "Execution Date", "crps": "Average CRPS"},
-        title="Average CRPS by Execution Date (compare models)"
-    )
-    fig.update_layout(
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-        template="plotly_white"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Aggregate CRPS by horizon and maturity
-    horizon_results = results_df.groupby(["horizon", "maturity_num"], as_index=False).agg({"crps": "mean"})
-    heatmap_data = horizon_results.pivot(index="horizon", columns="maturity_num", values="crps")
-
-    st.subheader("CRPS Heatmap by Horizon and Maturity")
-    fig_heatmap = px.imshow(
-        heatmap_data.T,
-        labels={"x": "Horizon (Months)", "y": "Maturity", "color": "CRPS"},
-        color_continuous_scale="Viridis",
-        aspect="auto"
-    )
-    st.plotly_chart(fig_heatmap, use_container_width=True)
-
-    # Bar plot: Average CRPS by Maturity
-    st.subheader("Average CRPS by Maturity")
-    bar_data = results_df.groupby(["maturity_num"], as_index=False).agg({"crps": "mean"})
-    fig_bar = px.bar(
-        bar_data,
-        x="maturity_num",
-        y="crps",
-        labels={"maturity_num": "Maturity", "crps": "Average CRPS"},
-        color="crps",
-        color_continuous_scale="Viridis"
-    )
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-    # CRPS trends over forecast dates for selected execution date and maturity
-    st.subheader("CRPS Trends Over Forecast Dates")
-    execution_dates_to_plot = results_df["execution_date"].unique()
-    selected_execution_date = st.selectbox("Select execution date", execution_dates_to_plot, key="crps_exec_date_selector")
-    subset = results_df[
-        (results_df["execution_date"] == selected_execution_date) &
-        (results_df["maturity"] == selected_maturity)
-    ]
-    if not subset.empty:
-        fig_trend = px.line(
-            subset,
-            x="forecast_date",
-            y="crps",
-            title=f"CRPS Trends Over Forecast Dates ({selected_maturity}, Execution Date: {selected_execution_date.date()})",
-            labels={"forecast_date": "Forecast Date", "crps": "CRPS"}
-        )
-        st.plotly_chart(fig_trend, use_container_width=True)
-    else:
-        st.warning("No CRPS trend data for selected execution date and maturity.")
