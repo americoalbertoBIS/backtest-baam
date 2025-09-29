@@ -69,9 +69,10 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
         horizons = range(1, max(horizons)+1)
         target_columns = ['beta1', 'beta2', 'beta3']  # Target columns for backtesting
         num_simulations = 1000  # Number of simulations for each execution date
-        max_workers = os.cpu_count() // 2  # Use half of the available CPU cores for parallel processing
+        max_workers = os.cpu_count() // 4  # Use half of the available CPU cores for parallel processing
 
         country_save_dir = os.path.join(save_dir, country)
+        
         os.makedirs(country_save_dir, exist_ok=True)  # Ensure the folder exists
         
         factors_base_dir = os.path.join(country_save_dir, "factors")
@@ -117,7 +118,7 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
                 half_life=None
             )
                     
-        run_all_models = True
+        run_all_models = False
         if not run_all_models:
             models_to_use = selected_models
         else:
@@ -189,8 +190,8 @@ if __name__ == "__main__":
     countries = ['UK'] # 'US','EA','UK'
     test = False
     if test:
-        model_name_to_test = "AR(1)"
-        target_col_to_test = "beta1"
+        model_name_to_test = "AR(1) + Output Gap (Direct) + Inflation (UCSV)"
+        target_col_to_test = "beta3"
     else:
         model_name_to_test = None
         target_col_to_test = None
