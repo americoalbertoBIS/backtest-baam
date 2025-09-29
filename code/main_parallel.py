@@ -63,7 +63,8 @@ def main(country, model_name_to_test=None, target_col_to_test=None,
         # Step 1: Define parameters
         variable_list = ['GDP', 'IP', 'CPI']  # List of macroeconomic variables
         shadow_flag = True  # Whether to use shadow rotation for betas
-        save_dir = r"C:\git\backtest-baam\data"  # Directory to save results
+        #save_dir = r"C:\git\backtest-baam\data"  # Directory to save results
+        save_dir = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_test'
         horizons = [6, 12, 24, 36, 48, 60]  # Forecast horizons
         horizons = range(1, max(horizons)+1)
         target_columns = ['beta1', 'beta2', 'beta3']  # Target columns for backtesting
@@ -188,15 +189,15 @@ if __name__ == "__main__":
     countries = ['UK'] # 'US','EA','UK'
     test = False
     if test:
-        model_name_to_test = "AR(1) + Output Gap (Direct) + Inflation (UCSV)"
-        target_col_to_test = "beta3"
+        model_name_to_test = "AR(1)"
+        target_col_to_test = "beta1"
     else:
         model_name_to_test = None
         target_col_to_test = None
 
     run_all_execution_dates = True
     if not run_all_execution_dates:
-        execution_dates_subset = pd.date_range(start="2010-01-01", end="2010-03-01", freq="MS")
+        execution_dates_subset = pd.date_range(start="1970-01-01", end="1980-01-01", freq="MS")
     else:
         execution_dates_subset = None
         

@@ -48,14 +48,16 @@ def kupiec_pof_test(realized, var_series, alpha):
 # ----------------------------
 
 # Load the dataset
-df = pd.read_csv(r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\US\returns\estimated_returns\Mixed_Model\annual_metrics.csv')
+df = pd.read_csv(r'L:\RMAS\Users\Alberto\backtest-baam\data_test\US\returns\estimated_returns\Mixed_Model\annual\risk_metrics.csv')
 
 # Ensure execution_date is a datetime object
-df['execution_date'] = pd.to_datetime(df['execution_date'])
+#df['execution_date'] = pd.to_datetime(df['execution_date'])
+
+df = df[df['maturity_years'] != 'maturity_years']
 
 # Define parameters
 maturities = df['maturity_years'].unique()
-horizons = df['horizon_years'].unique()
+horizons = df['horizon'].unique()
 alpha_levels = [0.95, 0.975, 0.99]
 
 # Initialize results list
@@ -65,7 +67,7 @@ results = []
 for maturity in maturities:
     for horizon in horizons:
         # Filter data for the current maturity and horizon
-        df_subset = df[(df['maturity_years'] == maturity) & (df['horizon_years'] == horizon)]
+        df_subset = df[(df['maturity_years'] == maturity) & (df['horizon'] == horizon)]
         df_subset = df_subset.sort_values(by='execution_date')
         
         # Drop duplicates, keeping the first occurrence
@@ -77,15 +79,15 @@ for maturity in maturities:
         # Reattempt pivot
         pivoted_df = df_subset.pivot(index='execution_date', columns='metric', values='value')
         
-        required_columns = ['Observed Annual Return', 'VaR 95', 'VaR 97', 'VaR 99']
+        required_columns = ['observed_return', 'VaR 95', 'VaR 97', 'VaR 99']
         pivoted_df = pivoted_df[required_columns]
         
         # Drop rows where 'Observed Annual Return' is NaN
-        pivoted_df = pivoted_df.dropna(subset=['Observed Annual Return'])
+        pivoted_df = pivoted_df.dropna(subset=['observed_return'])
                 
         # Prepare realized returns
         #obs_dates = pivoted_df['Observed Annual Return'].dropna()['execution_date']
-        realized = pivoted_df['Observed Annual Return'].values
+        realized = pivoted_df['observed_return'].values
 
         # Skip if no realized returns are available
         if realized.size == 0:
@@ -163,7 +165,7 @@ for maturity in maturities:
     df_maturity = df[df['maturity_years'] == maturity].sort_values(by='execution_date')
 
     # Create a figure with subplots (1 row per horizon, 5 columns for VaR levels)
-    horizons = list(df_maturity['horizon_years'].unique())
+    horizons = list(df_maturity['horizon'].unique())
     n_horizons = len(horizons)
     horizons.sort()
     fig, axes = plt.subplots(n_horizons, 1, figsize=(15, 5 * n_horizons), sharex=False)
@@ -173,27 +175,27 @@ for maturity in maturities:
 
     for i, horizon in enumerate(horizons):
         # Filter data for the current horizon
-        df_horizon = df_maturity[df_maturity['horizon_years'] == horizon]
+        df_horizon = df_maturity[df_maturity['horizon'] == horizon]
 
         # Pivot the data for this horizon
         df_horizon = df_horizon.drop_duplicates(subset=['execution_date', 'metric'], keep='first')
         pivoted_df = df_horizon.pivot(index='execution_date', columns='metric', values='value')
 
         # Ensure required columns exist
-        required_columns = ['Observed Annual Return', 'VaR 95', 'VaR 97', 'VaR 99']
+        required_columns = ['observed_return', 'VaR 95', 'VaR 97', 'VaR 99']
         if not all(col in pivoted_df.columns for col in required_columns):
             print(f"Skipping horizon {horizon} for maturity {maturity}: Missing required columns.")
             continue
 
         # Drop rows with NaN in 'Observed Annual Return'
-        pivoted_df = pivoted_df.dropna(subset=['Observed Annual Return'])
+        pivoted_df = pivoted_df.dropna(subset=['observed_return'])
 
         # Plot Observed Annual Return and VaR levels
         ax = axes[i]
-        ax.plot(pivoted_df.index, pivoted_df['Observed Annual Return'], label='Observed Annual Return', color='black', linewidth=1.5)
-        ax.plot(pivoted_df.index, pivoted_df['VaR 95'], label='VaR 95', color='blue', linestyle='--')
-        ax.plot(pivoted_df.index, pivoted_df['VaR 97'], label='VaR 97', color='orange', linestyle='--')
-        ax.plot(pivoted_df.index, pivoted_df['VaR 99'], label='VaR 99', color='red', linestyle='--')
+        ax.plot(pivoted_df['observed_return'], label='observed_return', color='black', linewidth=1.5)
+        ax.plot(pd.to_datetime(pivoted_df.index), pivoted_df['VaR 95'], label='VaR 95', color='blue', linestyle='--')
+        ax.plot(pd.to_datetime(pivoted_df.index), pivoted_df['VaR 97'], label='VaR 97', color='orange', linestyle='--')
+        ax.plot(pd.to_datetime(pivoted_df.index), pivoted_df['VaR 99'], label='VaR 99', color='red', linestyle='--')
         ax.grid()
         # Add labels and legend
         ax.set_title(f"Maturity: {maturity}, Horizon: {horizon}")

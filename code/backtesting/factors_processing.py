@@ -159,6 +159,7 @@ class FactorsProcessor:
         
         # Resample to monthly frequency
         self.observed_yields_df_resampled = observed_yields_df.resample('MS').mean()
+        self.observed_yields_df_resampled = self.observed_yields_df_resampled.dropna(how='all', axis=1)
         self.observed_yields_df_resampled /= 100
         
     def compute_predicted_yields(self):
@@ -256,6 +257,9 @@ class FactorsProcessor:
         returns_dir.mkdir(parents=True, exist_ok=True)
 
         for maturity in self.yield_curve_model.uniqueTaus:
+            if maturity not in self.observed_yields_df_resampled.columns:
+                continue
+            
             # Get the DataFrame for all simulations for this maturity
             yields_df = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)
             
