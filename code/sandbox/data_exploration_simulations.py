@@ -7,29 +7,30 @@ Created on Tue Jun 24 09:18:07 2025
 
 import pandas as pd
 
-df_sim = pd.read_parquet(r'C:\git\backtest-baam\data\EA\beta1_simulations_AR_1_Inflation_UCSV.parquet', engine = 'pyarrow')
+df_sim = pd.read_parquet(r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\US\factors\AR_1_Output_Gap_Direct_Inflation_UCSV\beta1\simulations.parquet', 
+                         engine = 'pyarrow')
 
 
-execution_dates = df_sim['ExecutionDate'].unique()
+execution_dates = df_sim['execution_date'].unique()
 
-execution_date = execution_dates[-1]
+execution_date = execution_dates[200]
 
-df_sim_exec_date = df_sim[df_sim['ExecutionDate']==execution_date].copy()
-df_sim_exec_date = df_sim_exec_date.sort_values(by=['SimulationID','ForecastDate'])
+df_sim_exec_date = df_sim[df_sim['execution_date']==execution_date].copy()
+df_sim_exec_date = df_sim_exec_date.sort_values(by=['simulation_id','forecast_date'])
 
-df_pred = pd.read_csv(r'C:\git\backtest-baam\data\EA\beta1_forecasts_AR_1_Inflation_UCSV.csv')
-df_pred['ExecutionDate'] = pd.to_datetime(df_pred['ExecutionDate'])
-df_pred['ForecastDate'] = pd.to_datetime(df_pred['ForecastDate'])
-df_pred_exec_date = df_pred[df_pred['ExecutionDate']==execution_date].copy()
+df_pred = pd.read_csv(r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\US\factors\AR_1_Output_Gap_Direct_Inflation_UCSV\beta1\forecasts.csv')
+df_pred['execution_date'] = pd.to_datetime(df_pred['execution_date'])
+df_pred['forecast_date'] = pd.to_datetime(df_pred['forecast_date'])
+df_pred_exec_date = df_pred[df_pred['execution_date']==execution_date].copy()
 df_pred_exec_date = df_pred_exec_date.dropna()
-df_sim_t = df_sim_exec_date.pivot(index='ForecastDate', columns='SimulationID', values='SimulatedValue')
+df_sim_t = df_sim_exec_date.pivot(index='forecast_date', columns='simulation_id', values='simulated_value')
 
 import os
 os.chdir(r'C:\git\backtest-baam\code')
 
 from data_preparation.data_loader import DataLoader
 
-country = 'EA'
+country = 'US'
 variable_list = None  # List of macroeconomic variables
 shadow_flag = True  # Whether to use shadow rotation for betas
 data_loader = DataLoader(country=country, variable_list=variable_list, shadow=shadow_flag)
@@ -62,8 +63,8 @@ for column in df_sim_t.columns:
     plt.plot(df_sim_t.index, df_sim_t[column], color='lightgrey', linewidth=0.5)
 
 # Plot the prediction line in black
-plt.plot(df_pred_exec_date['ForecastDate'], df_pred_exec_date['Prediction'], color='black', linewidth=2, label='Prediction')
-plt.plot(df_betas['beta1'][(df_betas.index >= execution_date)&(df_betas.index <= df_pred_exec_date['ForecastDate'].iloc[-1])])
+plt.plot(df_pred_exec_date['forecast_date'], df_pred_exec_date['prediction'], color='black', linewidth=2, label='prediction')
+plt.plot(df_betas['beta1'][(df_betas.index >= execution_date)&(df_betas.index <= df_pred_exec_date['forecast_date'].iloc[-1])], label='actual')
 # Add gridlines
 plt.grid(True, linestyle='--', alpha=0.7)
 
@@ -77,7 +78,7 @@ plt.legend(fontsize=12)
 plt.show()
 
 
-plt.plot(df_pred_exec_date['ForecastDate'], df_pred_exec_date['Prediction'], color='black', linewidth=2, label='Prediction')
+plt.plot(df_pred_exec_date['forecast_date'], df_pred_exec_date['prediction'], color='black', linewidth=2, label='prediction')
 plt.plot(df_betas['beta1'])
 
 

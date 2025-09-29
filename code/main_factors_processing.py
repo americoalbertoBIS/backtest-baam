@@ -175,9 +175,9 @@ def main():
     if not run_all_models:
         models_to_run = ["AR_1",
                          "Mixed_Model",
-                         #"Mixed_Model_curvMacro",
-                         #"Mixed_Model_MRM",
-                         #"AR_1_Output_Gap_Direct_Inflation_UCSV"
+                         "Mixed_Model_curvMacro",
+                         "Mixed_Model_MRM",
+                         "AR_1_Output_Gap_Direct_Inflation_UCSV"
                          ]  # <-- Set your desired subset here
         # Filter models_configurations for the selected models
         selected_models_configurations = {k: v for k, v in models_configurations.items() if k in models_to_run}

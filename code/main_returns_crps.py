@@ -81,12 +81,12 @@ def process_file(maturity_folder, maturity_path, file, data_obs):
         })
     return results
 
-country = 'US'
+country = 'EA'
 root_folder = rf"\\msfsshared\BNKG\\RMAS\Users\Alberto\backtest-baam\data_joint\{country}"
 returns_folder = os.path.join(root_folder, "returns", "estimated_returns")
 results_store = {}
 
-for model in ['AR_1', 'Mixed_Model']: # os.listdir(returns_folder)
+for model in ['Mixed_Model_curvMacro']: # os.listdir(returns_folder) # 'AR_1', 'Mixed_Model'
     model_path = os.path.join(returns_folder, model)
     if not os.path.isdir(model_path):
         continue
