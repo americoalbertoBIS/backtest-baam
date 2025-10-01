@@ -2397,8 +2397,8 @@ elif selected_macro == "Returns":
                         st.plotly_chart(fig_all_horizons, use_container_width=True)
 
     with tab_crps:
-        if selected_country != "US":
-            st.warning("CRPS analysis is currently available only for the US.")
+        if selected_country == "UK":
+            st.warning("CRPS analysis is currently NOT available for the UK.")
         else:
             st.title("CRPS (Continuous Ranked Probability Score) Analysis")
 
@@ -2555,7 +2555,7 @@ elif selected_macro == "Consensus Economics":
     st.title("Consensus Economics: RMSE by Horizon")
 
     # Load data
-    data_folder = r'L:\RMAS\Users\Alberto\backtest-baam\data_test\consensus_backtest'
+    data_folder = rf'{base_folder}\consensus_backtest'
     rmse_file = os.path.join(data_folder, "rmse_horizon_all_countries_indicators.csv")
     master_rmse_horizon = pd.read_csv(rmse_file)
 
@@ -2563,7 +2563,7 @@ elif selected_macro == "Consensus Economics":
     indicators = ["GDP", "CPI", "STR", "LTR"]
     model_colors = {"AR(1)": "#aa322f", "Consensus": "#3a6bac"}
 
-    selected_country = st.selectbox("Select country", countries, key="consensus_country_selector")
+    #selected_country = st.selectbox("Select country", countries, key="consensus_country_selector")
 
     # 4 panels for the 4 indicators
     cols = st.columns(4)
