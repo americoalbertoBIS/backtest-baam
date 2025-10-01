@@ -19,7 +19,7 @@ from backtesting.config_models import models_configurations
 from config_paths import SAVE_DIR
 
 #CONFIDENCE_LEVEL = 0.05  # 5% for 95% confidence level
-BETAS_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
+BETAS_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_test'
 #BETAS_DIR = r'C:\git\backtest-baam\data'
 #SAVE_DIR = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_joint'
 #LOG_DIR = r"C:\git\backtest-baam\logs"
@@ -175,7 +175,7 @@ def main():
     if not run_all_models:
         models_to_run = ["AR_1",
                          "Mixed_Model",
-                         "Mixed_Model_curvMacro",
+                         #"Mixed_Model_curvMacro",
                          "Mixed_Model_MRM",
                          "AR_1_Output_Gap_Direct_Inflation_UCSV"
                          ]  # <-- Set your desired subset here

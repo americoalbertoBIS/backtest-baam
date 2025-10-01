@@ -331,7 +331,10 @@ class FactorsProcessor:
         """
         results = []
         for maturity in self.yield_curve_model.uniqueTaus:
-                    
+
+            if f"{maturity} years" not in self.observed_yields_df_resampled.columns:
+                continue
+            
             # Get simulated and observed yields for this maturity
             simulated_yields = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)
             observed_yields = self.observed_yields_df_resampled[f"{maturity} years"]
@@ -418,6 +421,8 @@ class FactorsProcessor:
         annual_metrics_all = []
 
         for maturity in self.yield_curve_model.uniqueTaus:
+            if f"{maturity} years" not in self.observed_yields_df_resampled.columns:
+                continue
             
             # Get simulated and observed yields for this maturity
             simulated_yields = self.simulated_observed_yields_df.xs(maturity, level="maturity", axis=1)

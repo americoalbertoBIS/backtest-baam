@@ -622,7 +622,7 @@ country = 'EA'
 base_folder = rf'L:\RMAS\Users\Alberto\backtest-baam\data_test\{country}'
 measure = 'returns'
 estimated_path = fr'{base_folder}\{measure}\estimated_{measure}'
-observed_path = fr'L:\RMAS\Users\Alberto\backtest-baam\data_joint\{country}\{measure}\observed_{measure}'
+observed_path = fr'{base_folder}\{measure}\observed_{measure}'
 
 if measure == 'returns':
     freq = 'annual' # annual, monthly
@@ -632,11 +632,11 @@ if measure == 'returns':
         data_mixed = pd.read_csv(fr'{estimated_path}\Mixed_Model\{freq}\forecasts.csv')
         
         #data_mixedCurvMacro = pd.read_csv(fr'{estimated_path}\Mixed_Model_curvMacro\{freq}\forecasts.csv')
-        #data_ar1bench = pd.read_csv(fr'{observed_path}\AR_1\{freq}\forecasts.csv')
+        data_ar1bench = pd.read_csv(fr'{observed_path}\AR_1\{freq}\forecasts.csv')
     else:
         data_ar1 = pd.read_csv(fr'{estimated_path}\AR_1\{freq}\forecasts.csv')
         data_mixed = pd.read_csv(fr'{estimated_path}\Mixed_Model\{freq}\forecasts.csv')
-        
+        data_ar1bench = pd.read_csv(rf'{observed_path}\AR_1\{freq}\forecasts.csv')
         data_mixedCurvMacro = pd.read_csv(fr'{estimated_path}\Mixed_Model_curvMacro\{freq}\forecasts.csv')        
 
 else:
@@ -681,7 +681,7 @@ for maturity in maturities:
             "AR(1) factors": calculate_rmse(data_ar1[data_ar1['maturity'] == maturity], start_date='1990-01-01'),
             "Macro-based approach": calculate_rmse(data_mixed[data_mixed['maturity'] == maturity], start_date='1990-01-01'),
             #"Macro-based approach (macro-curv)": calculate_rmse(data_mixedCurvMacro[data_mixedCurvMacro['maturity'] == maturity], start_date='1990-01-01'),
-            #"AR(1) benchmark": calculate_rmse(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=True),
+            "AR(1) benchmark": calculate_rmse(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=False),
         }
     else:
         if measure == 'yields':
@@ -698,7 +698,7 @@ for maturity in maturities:
                 "AR(1) factors": calculate_rmse(data_ar1[data_ar1['maturity'] == maturity], start_date='1990-01-01'),
                 "Macro-based approach": calculate_rmse(data_mixed[data_mixed['maturity'] == maturity], start_date='1990-01-01'),
                 "Macro-based approach (macro-curv)": calculate_rmse(data_mixedCurvMacro[data_mixedCurvMacro['maturity'] == maturity], start_date='1990-01-01'),
-                #"AR(1) benchmark": calculate_rmse(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=True),
+                "AR(1) benchmark": calculate_rmse(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=False),
             }
 
 # Prepare the 1x3 subplot
@@ -731,6 +731,7 @@ for idx, maturity in enumerate(maturities):
             linewidth=2.5,
             zorder=2
         )
+        ax.set_title(f"{maturity}")
         # Add dots for every horizon if returns and annual, otherwise every 12 horizons
         if measure == 'returns' and freq == 'annual':
             dot_horizons = rmse_data["horizon"]  # Include all horizons
@@ -829,7 +830,7 @@ for maturity in maturities:
         "AR(1) factors": calculate_rmse_by_execution_date(data_ar1[data_ar1['maturity'] == maturity], start_date='1990-01-01'),
         "Macro-based approach": calculate_rmse_by_execution_date(data_mixed[data_mixed['maturity'] == maturity], start_date='1990-01-01'),
         #"Macro-based approach (macro-curv)": calculate_rmse_by_execution_date(data_mixedCurvMacro[data_mixedCurvMacro['maturity'] == maturity], start_date='1990-01-01'),
-        #"AR(1) benchmark": calculate_rmse_by_execution_date(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=True),
+        "AR(1) benchmark": calculate_rmse_by_execution_date(data_ar1bench[data_ar1bench['maturity'] == maturity], start_date='1990-01-01', scale_benchmark=False),
     }
 
 # Prepare the 1x4 subplot
@@ -862,6 +863,7 @@ for idx, maturity in enumerate(maturities):
             linewidth=1.5,
             zorder=2
         )
+        ax.set_title(f"{maturity}")
         # Add dots for each execution date
     # Style subplot
     style_subplot(ax)
@@ -881,7 +883,7 @@ for idx, maturity in enumerate(maturities):
 
 # Adjust layout and save the plot
 plt.tight_layout()
-plt.savefig(rf"{graphs_folder}\rmse_yields_by_execution_date_nosharey_{country}.svg", format="svg")
+#plt.savefig(rf"{graphs_folder}\rmse_yields_by_execution_date_nosharey_{country}.svg", format="svg")
 plt.show()
 
 
@@ -1055,7 +1057,7 @@ plt.show()
 #%% CONSENSUS
 
 import pandas as pd
-data_folder = r'L:\RMAS\Users\Alberto\backtest-baam\data_joint\consensus_backtest'
+data_folder = r'L:\RMAS\Users\Alberto\backtest-baam\data_test\consensus_backtest'
 master_rmse_horizon = pd.read_csv(rf"{data_folder}\rmse_horizon_all_countries_indicators.csv")
 
 # Plot
