@@ -14,7 +14,7 @@ from modeling.time_series_modeling import AR1Model
 from data_preparation.data_loader import DataLoaderYC
 from modeling.yield_curve_modeling import YieldCurveModel
 
-save_dir = r"C:\git\backtest-baam\data"
+save_dir = r'\\msfsshared\bnkg\RMAS\Users\Alberto\backtest-baam\data_test'
 
 def extract_residuals(model, execution_date):
     """
