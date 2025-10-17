@@ -595,7 +595,7 @@ def run_forecasts_parallel(observed_df, obs_model_dir, forecast_horizon=60, num_
 
 
 if __name__ == "__main__":
-    countries = ['US'] #, 'EA', 'UK'
+    countries = ['UK'] #, 'EA', 'UK', 'US'
     
     for country in countries:
         print(country)
@@ -644,6 +644,7 @@ if __name__ == "__main__":
         #observed_yields_df_resampled = observed_yields_df_resampled.iloc[:, 1:]  # Drop the first column (e.g., 0.08333 years)
         
         zcb_results = {}
+        observed_yields_df_resampled = observed_yields_df_resampled.dropna(how='all', axis=1)
         for col in observed_yields_df_resampled.columns:
             # Extract the numeric maturity value from the column name, e.g., "1.0 years" -> 1.0
             maturity_val = float(col.split()[0])

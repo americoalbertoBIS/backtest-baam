@@ -175,7 +175,7 @@ def main():
     if not run_all_models:
         models_to_run = ["AR_1",
                          "Mixed_Model",
-                         #"Mixed_Model_curvMacro",
+                         "Mixed_Model_curvMacro",
                          "Mixed_Model_MRM",
                          "AR_1_Output_Gap_Direct_Inflation_UCSV"
                          ]  # <-- Set your desired subset here
@@ -225,7 +225,7 @@ def main():
             execution_dates = sorted(execution_dates)
             
             execution_dates_filter = False
-            custom_dates = pd.date_range(start="1999-07-01", end="2000-01-01", freq="MS")
+            custom_dates = pd.date_range(start="1999-05-01", end="2000-01-01", freq="MS")
             if execution_dates_filter:
                 execution_dates = [d for d in execution_dates if d in custom_dates]
             

@@ -257,7 +257,7 @@ class FactorsProcessor:
         returns_dir.mkdir(parents=True, exist_ok=True)
 
         for maturity in self.yield_curve_model.uniqueTaus:
-            if maturity not in self.observed_yields_df_resampled.columns:
+            if f"{maturity} years" not in self.observed_yields_df_resampled.columns:
                 continue
             
             # Get the DataFrame for all simulations for this maturity
