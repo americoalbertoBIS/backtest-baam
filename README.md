@@ -36,13 +36,13 @@ code/
 
 ## Main Scripts
 
-- **backtesting_observed_returns.py / backtesting_observed_yields.py**Run backtests on observed returns and yields.
+- **backtesting_observed_returns.py / backtesting_observed_yields.py** Run backtests on observed returns and yields.
 
   - Load data, fit models (e.g., AR(1)), compute metrics (RMSE, R²), and save results.
   - Organize outputs by country, frequency, and model.
-- **main_factors_backtesting.py**Orchestrates backtesting for factor models, including logging and MLflow experiment tracking.
-- **main_factors_processing.py**Processes and transforms factor data for modeling and analysis.
-- **main_returns_crps.py**Computes CRPS (Continuous Ranked Probability Score) for probabilistic model evaluation.
+- **main_factors_backtesting.py** Orchestrates backtesting for factor models, including logging and MLflow experiment tracking.
+- **main_factors_processing.py** Processes and transforms factor data for modeling and analysis.
+- **main_returns_crps.py** Computes CRPS (Continuous Ranked Probability Score) for probabilistic model evaluation.
 - **config_paths.py**
   Centralizes configuration for data and output paths.
 
